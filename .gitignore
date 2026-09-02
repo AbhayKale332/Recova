@@ -1,0 +1,218 @@
+# ---------- Environment / Secrets ----------
+.env
+.env.*
+!.env.example
+*.env.local
+
+# API keys / credentials
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+share/python-wheels/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ---------- LangChain / LangGraph ----------
+.langgraph/
+.langchain/
+*.trace
+traces/
+runs/
+
+# Local agent state / checkpoints
+.checkpoints/
+checkpoints/
+agent_state/
+agent_memory/
+
+# ---------- Application Data ----------
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Synthetic/generated datasets
+data/generated/
+data/tmp/
+data/cache/
+
+# Large local exports
+exports/
+*.csv
+*.parquet
+*.arrow
+
+# Keep dataset documentation/examples
+!data/.gitkeep
+!data/**/README.md
+!data/**/*.example.csv
+
+# ---------- Logs ----------
+logs/
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- FastAPI / Backend ----------
+.cache/
+.pytest_cache/
+
+# Uvicorn / Gunicorn
+*.pid
+
+# ---------- Node / React / Next.js ----------
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+
+# Vite
+.vite/
+
+# Turbo
+.turbo/
+
+# Parcel
+.parcel-cache/
+
+# React Native / Expo (if ever used)
+.expo/
+.expo-shared/
+
+# ---------- Frontend Environment ----------
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ---------- TypeScript ----------
+*.tsbuildinfo
+
+# ---------- Package managers ----------
+.pnpm-store/
+.yarn/
+.yarn-cache/
+.yarn-integrity
+
+# ---------- IDE / Editors ----------
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux
+.directory
+
+# ---------- Docker ----------
+*.docker.env
+docker-data/
+.docker/
+
+# ---------- Temporary / Runtime ----------
+tmp/
+temp/
+*.tmp
+*.temp
+
+# PID / socket files
+*.pid
+*.sock
+
+# ---------- AI / ML ----------
+# Model weights
+*.ckpt
+*.pth
+*.pt
+*.bin
+*.safetensors
+*.onnx
+
+models/
+weights/
+artifacts/
+mlruns/
+
+# Hugging Face cache
+.huggingface/
+.cache/huggingface/
+
+# ---------- Secrets / Local Config ----------
+secrets/
+private/
+.local/
+local_config/
+config.local.*
+settings.local.*
+
+# ---------- Generated reports ----------
+reports/generated/
+reports/tmp/
+
+# ---------- OS / Misc ----------
+*.bak
+*.old
+*.orig
+*.rej
