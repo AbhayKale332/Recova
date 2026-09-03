@@ -1,1 +1,0 @@
-"""Recova FastAPI application."""

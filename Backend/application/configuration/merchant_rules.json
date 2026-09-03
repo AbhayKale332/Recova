@@ -1,0 +1,14 @@
+{
+  "_comment": "Hardcoded merchant policy the PolicySandbox enforces. The engine may only attempt actions and amounts that clear these limits, regardless of what the conversational layer proposes.",
+  "max_discount_pct": 15,
+  "max_intervention_amount_minor": 1000000,
+  "allowed_channels": ["WHATSAPP", "VOICE", "PAYMENT_LINK"],
+  "allowed_actions": [
+    "SEND_WHATSAPP",
+    "VOICE_CALL",
+    "OFFER_FEE_WAIVER",
+    "GENERATE_PAYMENT_LINK",
+    "RETRY_CHARGE",
+    "CANCEL_SUBSCRIPTION"
+  ]
+}

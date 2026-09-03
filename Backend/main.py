@@ -1,5 +1,6 @@
-"""Development entry point for the Recova API."""
+def main():
+    print("Hello from backend!")
 
-from app.main import app
 
-__all__ = ["app"]
+if __name__ == "__main__":
+    main()
