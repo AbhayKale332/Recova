@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/*
+ * One theme: light, neutral, single teal accent (Vision §6).
+ * No dark mode, no route-scoped theme swaps. If it isn't actionable, it isn't
+ * accent-coloured.
+ */
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --border: #e5e5e5;
+  --ink: #171717;
+  --muted: #737373;
+  --accent: #0d9488;
+  --accent-ink: #0f766e;
+  --accent-wash: #f0fdfa;
+
+  /* Status. Slate for "stopped" is deliberate: a compliant stop is
+     neutral-good, not alarming. */
+  --recovered: #16a34a;
+  --inflight: #d97706;
+  --escalated: #2563eb;
+  --stopped: #64748b;
+  --lost: #e11d48;
+
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border-token: var(--border);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-recovered: var(--recovered);
+  --color-inflight: var(--inflight);
+  --color-escalated: var(--escalated);
+  --color-stopped: var(--stopped);
+  --color-lost: var(--lost);
+
+  /* System stack, with Devanagari faces ahead of the emoji fallbacks so Hindi
+     renders without a webfont download. */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    "Noto Sans", "Noto Sans Devanagari", "Nirmala UI", "Mangal", Arial, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono:
+    ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  /* The console is a work surface: 13–14px body, tight rows (Vision §6). */
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Money and every other figure aligns in a column. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* One visible focus treatment across the app, keyboard-only. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Motion: 150ms for state changes, 250ms for panels, and nothing that delays
+   reading a number. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@utility sr-only-focusable {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

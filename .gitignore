@@ -226,3 +226,8 @@ reports/tmp/
 
 # Optional instance folder used by some Flask/FastAPI setups
 instance/
+# ---------- Frontend (Next.js) ----------
+Frontend/node_modules/
+Frontend/.next/
+Frontend/next-env.d.ts
+Frontend/*.tsbuildinfo
