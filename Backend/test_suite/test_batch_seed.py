@@ -26,6 +26,22 @@ def test_seed_bulk_spread_per_class (db_session ):
     assert db_session .query (EscalationQueue ).count ()==4 *2
 
 
+def test_seed_bulk_holds_its_state_ratio_at_the_batch_size_seed_uses (db_session ):
+    """30 is not a multiple of the 20-slot mix, so the ratio has to be scaled."""
+    from collections import Counter
+
+    from application .operations .batch_seed import _seed_bulk
+
+    _seed_bulk (db_session ,per_class =30 )
+    rows =db_session .query (TransactionState ).all ()
+    for fc in FailureClass :
+        cls =[t for t in rows if int (t .failure_class )==int (fc )]
+        assert len (cls )==30
+        states =Counter (t .current_state .value for t in cls )
+        assert len (states )==5
+        assert states ["RECOVERED"]==18
+
+
 def test_seed_batch_populates_transactions (db_session ):
     result =seed_batch (db_session )
     rows =db_session .query (TransactionState ).all ()

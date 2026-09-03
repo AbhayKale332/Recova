@@ -9,11 +9,14 @@ from application .operations .failure_classifier import UnclassifiableSignal ,cl
 [
 ("BAD_REQUEST_GATEWAY_TIMEOUT",FailureClass .REALTIME_DEGRADATION ),
 ("ISSUER_DOWN",FailureClass .REALTIME_DEGRADATION ),
+("GATEWAY_TIMEOUT",FailureClass .REALTIME_DEGRADATION ),
 ("NETWORK_FAILURE",FailureClass .REALTIME_DEGRADATION ),
 ("AUTH_3DS_DROPPED",FailureClass .CHECKOUT_ABANDONMENT ),
+("CUSTOMER_AUTH_TIMEOUT",FailureClass .CHECKOUT_ABANDONMENT ),
 ("SESSION_EXPIRED",FailureClass .CHECKOUT_ABANDONMENT ),
 ("CUSTOMER_DROPPED_OFF",FailureClass .CHECKOUT_ABANDONMENT ),
 ("INSUFFICIENT_FUNDS",FailureClass .SUBSCRIPTION_MANDATE ),
+("MANDATE_PAUSED",FailureClass .SUBSCRIPTION_MANDATE ),
 ("TOKEN_EXPIRED",FailureClass .SUBSCRIPTION_MANDATE ),
 ("MANDATE_REJECTED",FailureClass .SUBSCRIPTION_MANDATE ),
 ],
@@ -40,3 +43,14 @@ def test_classification_is_case_insensitive_on_error_code ():
 def test_unknown_signal_raises ():
     with pytest .raises (UnclassifiableSignal ):
         classify (event_type ="payment.failed",error_code ="SOMETHING_NEW")
+
+
+def test_every_seeded_error_code_is_classifiable ():
+    """The demo batch must not advertise telemetry the webhook path would reject."""
+    from application .operations .batch_seed import class_profile
+
+    for fc in FailureClass :
+        profile =class_profile (fc )
+        assert classify (
+        event_type =profile ["event_type"],error_code =profile ["error_code"],
+        )==fc

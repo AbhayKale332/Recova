@@ -10,6 +10,7 @@ from sqlalchemy .orm import Session
 from application .constants import (
 ActionType ,
 CallStatus ,
+FailureClass ,
 InterventionChannel ,
 MessageDirection ,
 MessageSender ,
@@ -21,7 +22,9 @@ TransactionLifecycleState ,
 )
 from application .entities import CallSession ,CallTurn ,Message ,TransactionState
 from application .operations .audit_service import record_audit
+from application .operations .batch_seed import class_profile
 from application .operations .conversation_service import build_call ,persona_for
+from application .operations .diagnosis_service import _DEFAULT_PLAYBOOK
 from application .operations .message_drafter import draft_message
 from application .operations .escalation_service import enqueue_escalation
 from application .operations .language_parser import extract_p2p_date
@@ -33,12 +36,18 @@ Event =tuple [str ,dict ]
 
 
 
-_DIAG :dict [int ,tuple [str ,str ,float ]]={
-1 :("ACQUIRER_SWITCH_TIMEOUT","REROUTE_RAIL",0.94 ),
-2 :("OTP_3DS_DROPPED","UPI_AUTOPAY_NUDGE",0.88 ),
-3 :("BALANCE_BEFORE_SALARY","SALARY_CYCLE_SEQUENCER",0.91 ),
-4 :("BUYER_AP_CYCLE","P2P_TRACKER",0.85 ),
-}
+def _diag (fc :int )->tuple [str ,str ,float ]:
+    """Root cause, playbook and confidence for a live run.
+
+    Read from the seeded batch's class profile so a case worked live and the
+    cases already on the dashboard never tell two different stories.
+    """
+    profile =class_profile (fc )
+    return (
+    profile ["root_cause"],
+    _DEFAULT_PLAYBOOK [FailureClass (fc )].value ,
+    profile ["confidence"],
+    )
 
 _LABEL ={1 :"Failed Payment",2 :"Abandoned Checkout",3 :"Failed Subscription",4 :"Overdue Invoice"}
 
@@ -137,7 +146,7 @@ locale :str ="en",
     pause (0.8 )
 
 
-    root ,playbook ,conf =_DIAG [fc ]
+    root ,playbook ,conf =_diag (fc )
     record_audit (db ,transaction_id =transaction_id ,node_name =NodeName .DIAGNOSE ,
     action_type =ActionType .STATE_TRANSITION ,
     payload ={"root_cause":root ,"recommended_playbook":playbook ,"confidence":conf },

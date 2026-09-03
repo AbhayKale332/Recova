@@ -61,45 +61,57 @@ _RECOVERED_LIKE ={"recovered","late_settlement","cross_device"}
 
 _CLASS_PROFILE :dict [FailureClass ,dict ]={
 FailureClass .REALTIME_DEGRADATION :{
-"label":"Real-Time Degradation",
+"label":"Issuer / Network Timeout",
 "event_type":"payment.failed",
-"error_code":"ISSUER_DOWN",
-"root_cause":"ACQUIRER_SWITCH_TIMEOUT",
-"confidence":0.94 ,
-"base_amount":249900 ,
+"error_code":"GATEWAY_TIMEOUT",
+"root_cause":"ISSUER_LATENCY_SPIKE",
+"confidence":0.93 ,
+"base_amount":329900 ,
 },
 FailureClass .CHECKOUT_ABANDONMENT :{
-"label":"Checkout Abandonment",
+"label":"Checkout Authentication Drop",
 "event_type":"payment.failed",
-"error_code":"AUTH_3DS_DROPPED",
-"root_cause":"OTP_3DS_DROPPED",
-"confidence":0.88 ,
-"base_amount":149900 ,
+"error_code":"CUSTOMER_AUTH_TIMEOUT",
+"root_cause":"OTP_SESSION_EXPIRED",
+"confidence":0.87 ,
+"base_amount":119900 ,
 },
 FailureClass .SUBSCRIPTION_MANDATE :{
-"label":"Subscription & Mandate",
+"label":"Recurring Mandate Failure",
 "event_type":"payment.failed",
-"error_code":"INSUFFICIENT_FUNDS",
-"root_cause":"BALANCE_BEFORE_SALARY",
-"confidence":0.91 ,
-"base_amount":89900 ,
+"error_code":"MANDATE_PAUSED",
+"root_cause":"SALARY_CYCLE_MISMATCH",
+"confidence":0.90 ,
+"base_amount":129900 ,
 },
 FailureClass .B2B_RECEIVABLES :{
-"label":"B2B Receivables",
+"label":"B2B Invoice Aging",
 "event_type":"invoice.overdue",
 "error_code":None ,
-"root_cause":"BUYER_AP_CYCLE",
-"confidence":0.85 ,
-"base_amount":8400000 ,
+"root_cause":"BUYER_APPROVAL_DELAY",
+"confidence":0.86 ,
+"base_amount":12600000 ,
 },
 }
 
 
 
+def class_profile (failure_class :FailureClass |int )->dict :
+    """The demo's per-class vocabulary: label, telemetry, root cause, confidence.
+
+    Exposed so the live recovery runner reads the same profile the batch was
+    seeded from instead of keeping a second copy that can drift out of sync.
+    """
+    return _CLASS_PROFILE [FailureClass (failure_class )]
+
+
 _CUSTOMERS =[
-"Aarav Mehta","Diya Kapoor","Vivaan Rao","Ananya Nair","Kabir Singh",
-"Ishaan Verma","Myra Reddy","Advait Joshi","Saanvi Iyer","Reyansh Gupta",
-"Aadhya Menon","Arjun Pillai","Zara Khan","Vihaan Shah","Anika Bose",
+"Meera Iyer","Rohan Das","Kavya Bhat","Aditya Kulkarni","Nikhil Fernandes",
+"Tara Bedi","Farhan Sheikh","Lakshmi Prasad","Soham Chatterjee","Aisha Rahman",
+"Neil D'Souza","Pooja Krishnan","Dev Malhotra","Sneha Patil","Yusuf Ansari",
+"Ira Banerjee","Manav Sethi","Ritu Menon","Arman Qureshi","Nandini Rao",
+"Karan Oberoi","Shreya Nair","Vikram Hegde","Anushka Pillai","Omar Siddiqui",
+"Maya Thomas","Harsh Vardhan","Simran Kaur","Aditi Bose","Rakesh Yadav",
 ]
 _CONTACTS =[f"+9198{n :08d}"for n in range (len (_CUSTOMERS ))]
 
@@ -232,7 +244,9 @@ def seed_batch (db ,*,spec :list |None =None ,now :datetime |None =None )->Batch
                 _seed_case (db ,graph ,item ,index )
             index +=1
 
-    _seed_bulk (db ,per_class =20 )
+    # Keep the demo dense enough for the dashboard while preserving the same
+    # state mix and recovery workflow for every class.
+    _seed_bulk (db ,per_class =30 )
     _seed_compliance_stops (db ,now )
     _spread_timestamps (db ,now )
     _seed_trackers (db ,now )
@@ -254,6 +268,18 @@ TransactionLifecycleState .ESCALATED :2 ,
 TransactionLifecycleState .FAILED :1 ,
 }
 _BULK_STATES =[s for s ,n in _BULK_MIX .items ()for _ in range (n )]
+
+
+def _bulk_state (k :int ,per_class :int )->TransactionLifecycleState :
+    """Walk the fixed mix across ``per_class`` slots.
+
+    Indexing by ``k % len(_BULK_STATES)`` would only hold the ratio when the batch
+    size is a multiple of the mix, so any other size silently over-weights the
+    states at the front of it (and inflates the dashboard's recovery rate).
+    """
+    return _BULK_STATES [k *len (_BULK_STATES )//per_class ]
+
+
 _BULK_ACTION ={
 FailureClass .REALTIME_DEGRADATION :(InterventionAction .GENERATE_PAYMENT_LINK ,InterventionChannel .PAYMENT_LINK ),
 FailureClass .CHECKOUT_ABANDONMENT :(InterventionAction .SEND_WHATSAPP ,InterventionChannel .WHATSAPP ),
@@ -294,7 +320,7 @@ def _seed_bulk (db ,*,per_class :int =20 )->None :
     index =10_000
     for fc in FailureClass :
         for k in range (per_class ):
-            state =_BULK_STATES [k %len (_BULK_STATES )]
+            state =_bulk_state (k ,per_class )
             txn =_new_txn (
             fc ,index ,archetype =f"CLASS_{int (fc )}",is_at_risk =True ,state =state ,
             retry_count =(1 +k %2 )if state ==TransactionLifecycleState .INTERVENING else 0 ,
@@ -409,12 +435,16 @@ def _seed_trackers (db ,now :datetime )->None :
     TransactionLifecycleState .INTERVENING ,TransactionLifecycleState .RECOVERED )
 
     subs =[
-    ("Aarav Mehta","Rooh Pro",799 ,-18 ,1 ,R ),
-    ("Diya Kapoor","Rooh Team",2499 ,-9 ,1 ,R ),
-    ("Kabir Singh","Rooh Studio",4999 ,-3 ,5 ,I ),
-    ("Myra Reddy","Rooh Plus",399 ,4 ,1 ,P ),
-    ("Vivaan Shah","Rooh Pro",799 ,8 ,28 ,W ),
-    ("Ishaan Roy","Rooh Team",2499 ,13 ,1 ,P ),
+    ("Meera Iyer","Rooh Pro",799 ,-18 ,1 ,R ),
+    ("Farhan Sheikh","Rooh Team",2499 ,-9 ,1 ,R ),
+    ("Kavya Bhat","Rooh Studio",4999 ,-3 ,5 ,I ),
+    ("Lakshmi Prasad","Rooh Plus",399 ,4 ,1 ,P ),
+    ("Neil D'Souza","Rooh Pro",799 ,8 ,28 ,W ),
+    ("Aisha Rahman","Rooh Team",2499 ,13 ,1 ,P ),
+    ("Ira Banerjee","Rooh Starter",499 ,-25 ,15 ,R ),
+    ("Vikram Hegde","Rooh Enterprise",8999 ,6 ,7 ,I ),
+    ("Shreya Nair","Rooh Plus",399 ,19 ,28 ,W ),
+    ("Omar Siddiqui","Rooh Studio",4999 ,31 ,1 ,P ),
     ]
     for name ,plan ,amt ,in_days ,salary_day ,state in subs :
         _tracker_txn (db ,FailureClass .SUBSCRIPTION_MANDATE ,name ,amt ,state ,{
@@ -424,12 +454,16 @@ def _seed_trackers (db ,now :datetime )->None :
         })
 
     invoices =[
-    ("Zomato Ltd",128000 ,20 ,3 ,None ,P ),
-    ("Swiggy Foods",96000 ,10 ,-12 ,None ,P ),
-    ("Blinkit Retail",210000 ,5 ,-44 ,"P2P",I ),
-    ("Nykaa Fashion",74000 ,30 ,-72 ,None ,P ),
-    ("Meesho Traders",156000 ,45 ,-110 ,None ,P ),
-    ("Ola Cabs",88000 ,15 ,-20 ,"P2P",W ),
+    ("Aurora Healthworks",128000 ,20 ,3 ,None ,P ),
+    ("Cedarline Manufacturing",96000 ,10 ,-12 ,None ,P ),
+    ("Vertex Learning Labs",210000 ,5 ,-44 ,"P2P",I ),
+    ("BlueKite Logistics",74000 ,30 ,-72 ,None ,P ),
+    ("Mosaic Foods Co.",156000 ,45 ,-110 ,None ,P ),
+    ("Northstar Mobility",88000 ,15 ,-20 ,"P2P",W ),
+    ("Riverbend Studios",342000 ,30 ,-181 ,None ,P ),
+    ("Solstice Hardware",675000 ,60 ,-95 ,"P2P",I ),
+    ("Cobalt Office Systems",54000 ,15 ,12 ,None ,P ),
+    ("TerraBloom Organics",189000 ,30 ,-38 ,None ,W ),
     ]
     for buyer ,amt ,term_days ,due_offset ,p2p ,state in invoices :
         due =today +timedelta (days =due_offset )
