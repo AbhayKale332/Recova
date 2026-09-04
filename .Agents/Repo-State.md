@@ -117,19 +117,26 @@ instead of writing that row.
 
 ### LLM surfaces
 
-Google Gemini only, via `google-genai`. No OpenAI or Anthropic in the tree. Function calling is
-explicitly **disabled** — there are no tool definitions. Three prompt-in/JSON-or-text-out call
-sites, each with a deterministic offline fallback, so the demo survives a dead network:
+OpenAI first, with Google Gemini as the provider fallback, through
+`operations/model_router.py`. Both SDKs are imported lazily; a missing key, missing SDK, 429, or
+transport error never takes down the API. Function calling is explicitly **disabled** — there are
+no tool definitions. Five router tasks share three capability tiers and every routed response has
+a `RouteDecision` explaining the choice. The three wired call sites retain deterministic offline
+fallbacks, so the demo survives a dead network:
 
 | Call site | Model tier | Fallback |
 | --- | --- | --- |
-| `operations/diagnosis_service.py` | `gemini_model` (`gemini-3.6-flash`), JSON mode | `_DEFAULT_PLAYBOOK[class]`, `root_cause="UNDIAGNOSED"`, confidence 0.0 |
-| `operations/message_drafter.py` | `gemini_draft_model` (`gemini-flash-lite`), plain text | hardcoded EN/HI template |
-| `operations/assistant_service.py` | strong tier | `_fallback_parse()`, pure keyword matching, EN + Hindi |
+| `operations/diagnosis_service.py` | `DIAGNOSE`: mini (`gpt-5.4-mini` / `gemini-3.6-flash`), JSON mode | `_DEFAULT_PLAYBOOK[class]`, `root_cause="UNDIAGNOSED"`, confidence 0.0 |
+| `operations/message_drafter.py` | `DRAFT`: nano in batch (`gpt-5.4-nano` / `gemini-flash-lite-latest`), mini live (`gpt-5.4-mini` / `gemini-3.6-flash`), plain text | hardcoded EN/HI template |
+| `operations/assistant_service.py` | `DECIDE`: full (`gpt-5.4` / `gemini-3-pro`), JSON mode | `_fallback_parse()`, pure keyword matching, EN + Hindi |
 
-`operations/ai_client.py` owns provider construction. LLM output is **advisory everywhere**: an
-unknown playbook string is coerced to the class default, and the assistant re-resolves every
-transaction reference against the DB so the model cannot name a case that does not exist.
+`operations/ai_client.py` keeps the legacy builders as thin compatibility wrappers over the
+router. `LLM_PROVIDER` remains the manual provider override; `router_stakes_threshold_inr` is
+₹25,000 by default, and stakes plus guardrail proximity can raise a route one tier at a time,
+capped at `full`. LLM output is **advisory everywhere**: an unknown playbook string is coerced to
+the class default, and the assistant re-resolves every transaction reference against the DB so the
+model cannot name a case that does not exist. `openai_free_tier` is deliberately explicit because
+the free daily quota requires opting into sharing that traffic with OpenAI.
 
 Batch paths pass `generate=None` to `draft_message` deliberately — template drafting, no live model.
 N cases × one model call each is the dominant cost and latency and will hit rate limits mid-demo.
@@ -196,7 +203,7 @@ src/app/          layout · page (landing placeholder) · globals.css (the whole
 src/components/   Money · StatusChip · ClassChip · Sheet · States · Toast
                   console/{ConsoleContext,ConsoleShell,ConsoleScreen,HeroMetrics,
                            SummarySentence,FunnelBar,LocaleToggle}
-                  sim/{ScenarioForm,CaseBuilder,RunProgress,ProjectionPanel,ProbabilityBreakdown,
+                  sim/{ScenarioForm,FormPrimitives,CaseBuilder,RunProgress,ProjectionPanel,ProbabilityBreakdown,
                       CaseFilters,CaseTable,CasePanel,BoundsGauge,DecisionTrace}
 src/lib/          api · types · format · status · bounds · summary · failure-classes · simulation · i18n/
 src/hooks/        useApi · useRecoveryRun · useSimulationRun
@@ -238,4 +245,3 @@ unused** — use them rather than adding new ones.
 - `EscalationQueue.rule` is nullable, which is why stopping rules are counted from audit payloads
   *and* ticket rules separately.
 - `Frontend-Vision.md` Appendix A omits `GET /stream/demo/{failure_class}` and `POST /assistant/tts`.
-- `Backend/.env` is committed with live credentials. Rotate them.

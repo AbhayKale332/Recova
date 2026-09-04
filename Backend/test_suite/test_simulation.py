@@ -139,6 +139,31 @@ def test_settlement_quirk_percentages_land_exactly ():
     assert sum (1 for c in cases if c .outcome_event =="payment.authorized")==20
 
 
+def test_authored_outcomes_are_not_rewritten_by_generated_settlement_quirks ():
+    scenario =Scenario (
+    cases =CaseShape (count =10 ,class_mix ={1 :1 }),
+    custom_cases =[CustomCase (customer_name ="Asha",amount_inr =1000,failure_class =1,outcome_event ="payment.captured")],
+    edge_cases =EdgeCases (reply_mix ={"silent":1.0 },late_settlement_pct =20 ,cross_device_pct =20 ),
+    )
+    cases =plan (scenario ,"run")
+    generated =cases [1:]
+
+    assert cases [0].outcome_event =="payment.captured"
+    assert [case .outcome_event for case in generated [:2]] ==["payment.authorized"]*2
+    assert [case .outcome_event for case in generated [2:4]] ==["payment.captured"]*2
+    assert sum (1 for case in generated if case .outcome_event =="payment.authorized")==2
+
+
+def test_authored_class_four_inherits_the_scenario_overdue_default ():
+    scenario =Scenario (
+    cases =CaseShape (count =0 ),
+    custom_cases =[CustomCase (customer_name ="Asha",amount_inr =1000,failure_class =4)],
+    edge_cases =EdgeCases (days_overdue =48 ),
+    )
+
+    assert plan (scenario ,"run")[0].days_overdue ==48
+
+
 def test_an_exhausted_retry_budget_zeroes_the_class3_projection ():
     scenario =Scenario (
     cases =CaseShape (count =20 ,class_mix ={3 :1 }),

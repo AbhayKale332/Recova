@@ -142,9 +142,13 @@ def build_nodes (deps :"OrchestratorDeps")->dict [str ,Callable [[RecoveryState 
 
     def diagnose (state :RecoveryState )->dict [str ,Any ]:
         transaction_id =state ["transaction_id"]
+        txn =_txn (deps ,transaction_id )
+        telemetry =dict (state .get ("telemetry",{}))
+        # The router boundary accepts rupees; database amounts remain paise.
+        telemetry .setdefault ("amount_minor",txn .amount_minor )
         diagnosis =deps .diagnosis .diagnose (
         failure_class =FailureClass (state ["failure_class"]),
-        telemetry =state .get ("telemetry",{}),
+        telemetry =telemetry,
         user_message =state .get ("user_message"),
         )
         # A custom scenario may pin the playbook while keeping diagnosis advisory.

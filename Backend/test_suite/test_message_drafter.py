@@ -57,6 +57,19 @@ def test_draft_falls_back_to_template_on_failure (db_session ):
     assert "Kabir"in out
 
 
+def test_explicit_none_keeps_batch_drafting_model_free (db_session ,monkeypatch ):
+    _txn (db_session ,name ="Batch Customer")
+
+    def must_not_build (*_args ,**_kwargs ):
+        raise AssertionError ("batch drafting must not build a model")
+
+    monkeypatch.setattr (
+    "application.operations.message_drafter._default_generate",must_not_build
+    )
+    out =draft_message (db_session ,"draft_1","remind to pay",generate =None )
+    assert "Batch"in out
+
+
 def _has_devanagari (s :str )->bool :
     return any ("ऀ"<=ch <="ॿ"for ch in s )
 

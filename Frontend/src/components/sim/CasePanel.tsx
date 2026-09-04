@@ -15,7 +15,7 @@ import { api } from "@/lib/api";
 import { computeBounds } from "@/lib/bounds";
 import { formatConfidence, humanizeEnum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
-import type { SimCase, TraceStep } from "@/lib/simulation";
+import type { RouteDecision, SimCase, TraceStep } from "@/lib/simulation";
 import type { PolicyResponse, TransactionDetail } from "@/lib/types";
 
 /**
@@ -43,6 +43,21 @@ export function CasePanel({
     [id],
   );
   const detail = useApi<TransactionDetail | null>(fetchDetail);
+
+  const fetchRoute = useCallback(
+    (signal: AbortSignal) =>
+      simCase
+        ? api.explainRoute(
+            {
+              task: "DIAGNOSE",
+              amount_inr: simCase.amount_inr,
+            },
+            signal,
+          )
+        : Promise.resolve(null),
+    [simCase],
+  );
+  const route = useApi<RouteDecision | null>(fetchRoute);
 
   const bounds = useMemo(() => {
     if (!detail.data) return null;
@@ -116,6 +131,21 @@ export function CasePanel({
               </section>
             </>
           )}
+
+          {route.data ? (
+            <section
+              className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--accent-wash)] px-3 py-2"
+              title={route.data.reason}
+              aria-label={`${t.sim.routeLabel}: ${route.data.reason}`}
+            >
+              <span className="text-[11px] font-medium tracking-wide text-[var(--muted)] uppercase">
+                {t.sim.routeLabel}
+              </span>
+              <span className="tabular text-[12px] font-semibold text-[var(--accent-ink)]">
+                {route.data.provider} · {route.data.model}
+              </span>
+            </section>
+          ) : null}
 
           <ProbabilityBreakdown
             p={simCase.p}

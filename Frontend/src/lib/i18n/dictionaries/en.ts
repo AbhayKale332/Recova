@@ -281,6 +281,7 @@ export const en = {
     casesFromRun: "Cases from this run",
     whyTitle: "Why",
     whyEmpty: "No decisions recorded for this case.",
+    routeLabel: "Model route",
     boundsTitle: "Bounds",
     retriesBudget: "Auto-debit retries",
     voiceBudget: "Voice calls",

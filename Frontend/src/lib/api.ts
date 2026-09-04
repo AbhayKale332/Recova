@@ -29,7 +29,7 @@ import type {
   TransactionRow,
 } from "@/lib/types";
 import type { Locale } from "@/lib/i18n/dictionaries/en";
-import type { SavedScenario, Scenario, ScenarioPreset } from "@/lib/simulation";
+import type { RouteDecision, SavedScenario, Scenario, ScenarioPreset } from "@/lib/simulation";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, "") ?? "http://localhost:8000";
@@ -170,6 +170,17 @@ export const api = {
     get<{ status: string; service: string }>("/health", undefined, signal),
 
   metrics: (signal?: AbortSignal) => get<Metrics>("/metrics", undefined, signal),
+
+  explainRoute: (
+    body: {
+      task: string;
+      amount_inr: number;
+      retries_used?: number;
+      voice_attempts?: number;
+      discount_pct?: number | null;
+    },
+    signal?: AbortSignal,
+  ) => post<RouteDecision>("/router/explain", body, undefined, signal),
 
   transactions: (query: TransactionQuery = {}, signal?: AbortSignal) =>
     get<TransactionList>("/transactions", query as Query, signal),

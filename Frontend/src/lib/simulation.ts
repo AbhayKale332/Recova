@@ -34,7 +34,7 @@ export interface CustomCase {
   reply: ReplyKind | null;
   retries_used: number;
   voice_attempts: number;
-  days_overdue: number;
+  days_overdue: number | null;
   outcome_event: string | null;
   playbook: string | null;
 }
@@ -138,6 +138,19 @@ export interface SimCase {
   base_rate: number;
   contributions: Contribution[];
   elapsed_ms: number;
+}
+
+/** Deterministic explanation of the model route shown in a case panel. */
+export interface RouteDecision {
+  task: string;
+  tier: "nano" | "mini" | "full";
+  provider: "openai" | "gemini";
+  model: string;
+  reason: string;
+  raised_by: string[];
+  escalated_from: string | null;
+  latency_ms: number;
+  tokens: number | null;
 }
 
 export interface Throughput {

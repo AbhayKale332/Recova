@@ -1,90 +1,46 @@
-"""Lazy Google Gemini integration used by advisory diagnosis and message generation."""
+"""Compatibility builders over the advisory model router.
 
-from google import genai
-from google .genai import types
+The public ``generate(prompt) -> str`` builders remain because tests and the
+simulation runner call them directly. Provider construction itself lives in
+``model_router`` and both SDKs remain lazy.
+"""
 
-from application .settings import settings
-from application .operations .diagnosis_service import DiagnosisEngine ,GenerateFn
+from __future__ import annotations
 
-
-def build_generate (api_key :str |None =None ,model :str |None =None )->GenerateFn :
-    client =genai .Client (api_key =api_key or settings .gemini_api_key )
-    model_name =model or settings .gemini_model
-
-    def generate (prompt :str )->str :
-        response =client .models .generate_content (
-        model =model_name ,
-        contents =prompt ,
+from application.operations.diagnosis_service import DiagnosisEngine, GenerateFn
+from application.operations.model_router import build_task_generate, router
 
 
+def build_generate(api_key: str | None = None, model: str | None = None) -> GenerateFn:
+    """Build the diagnosis generator, routed by default.
 
-        config =types .GenerateContentConfig (
-        response_mime_type ="application/json",
-        automatic_function_calling =types .AutomaticFunctionCallingConfig (disable =True ),
-        ),
-        )
-        return response .text or ""
-
-    return generate
-
-
-def build_text_generate (api_key :str |None =None ,model :str |None =None )->GenerateFn :
-    """A plain-text ``generate(prompt) -> str`` for message/voice drafting.
-
-    Unlike the diagnosis generator this does not force JSON — the caller wants a
-    natural WhatsApp/voice line. Uses the cheap draft model by default.
+    Explicit key/model arguments preserve the historical Gemini override while
+    still using the shared provider registry.
     """
-    client =genai .Client (api_key =api_key or settings .gemini_api_key )
-    model_name =model or settings .gemini_draft_model
-
-    def generate (prompt :str )->str :
-        response =client .models .generate_content (
-        model =model_name ,
-        contents =prompt ,
-        config =types .GenerateContentConfig (
-        automatic_function_calling =types .AutomaticFunctionCallingConfig (disable =True ),
-        ),
-        )
-        return response .text or ""
-
-    return generate
+    return build_task_generate(
+        "DIAGNOSE",
+        provider="gemini" if api_key is not None or model is not None else None,
+        model=model,
+        api_key=api_key,
+    )
 
 
-def default_diagnosis_engine ()->DiagnosisEngine :
-    """Diagnosis engine backed by the live Gemini model from settings."""
-    return DiagnosisEngine (generate =build_generate ())
+def build_text_generate(api_key: str | None = None, model: str | None = None) -> GenerateFn:
+    """Build the plain-text DRAFT generator used for human-facing messages."""
+    return build_task_generate(
+        "DRAFT",
+        live=True,
+        provider="gemini" if api_key is not None or model is not None else None,
+        model=model,
+        api_key=api_key,
+    )
 
 
-def _openai_generate (model :str |None =None )->GenerateFn :
-    """Strong tier over OpenAI.
-
-    Imported inside the function so ``openai`` stays an optional dependency:
-    nothing here is required unless ``LLM_PROVIDER=openai`` is actually set.
-    """
-    from openai import OpenAI
-
-    client =OpenAI (api_key =settings .openai_api_key )
-    model_name =model or settings .openai_model
-
-    def generate (prompt :str )->str :
-        response =client .chat .completions .create (
-        model =model_name ,
-        messages =[{"role":"user","content":prompt }],
-        response_format ={"type":"json_object"},
-        )
-        return response .choices [0 ].message .content or ""
-
-    return generate
+def default_diagnosis_engine() -> DiagnosisEngine:
+    """Return a diagnosis engine whose default calls carry amount context."""
+    return DiagnosisEngine(router=router)
 
 
-def build_strong_generate ()->GenerateFn :
-    """The strong JSON-mode tier, from whichever provider is configured.
-
-    Provider selection lives here alone so the call sites never learn which
-    vendor they are talking to. Every one of them already falls back to a
-    deterministic path when the model fails, so a misconfigured provider degrades
-    the wording rather than the behaviour.
-    """
-    if settings .llm_provider .lower ()=="openai":
-        return _openai_generate ()
-    return build_generate (model =settings .gemini_strong_model )
+def build_strong_generate() -> GenerateFn:
+    """Build the DECIDE generator; provider choice stays inside the router."""
+    return build_task_generate("DECIDE")

@@ -12,6 +12,7 @@ from application .entities import Message ,TransactionState
 logger =logging .getLogger (__name__ )
 
 GenerateFn =Callable [[str ],str ]
+_UNSET =object ()
 
 _CLASS_PROBLEM ={
 1 :"a real-time payment failure (a gateway/rail glitch on our side)",
@@ -56,7 +57,7 @@ db :Session ,
 transaction_id :str ,
 prompt :str ,
 *,
-generate :GenerateFn |None =None ,
+generate :GenerateFn |None |object =_UNSET ,
 locale :str ="en",
 )->str :
     txn =(
@@ -80,7 +81,12 @@ locale :str ="en",
     if locale =="hi":
         full_prompt +="\nWrite the message in Hindi (Devanagari script)."
 
-    gen =generate or _default_generate ()
+    # Convert paise to rupees once, at the router boundary.
+    if generate is _UNSET:
+        gen =_default_generate (txn .amount_minor /100 )
+    else:
+        # ``None`` is an intentional offline instruction used by batch paths.
+        gen =generate
     if gen is not None :
         try :
             text =gen (full_prompt ).strip ().strip ('"')
@@ -92,11 +98,11 @@ locale :str ="en",
     return _fallback (txn ,prompt ,locale )
 
 
-def _default_generate ()->GenerateFn |None :
+def _default_generate (amount_inr :float =0 )->GenerateFn |None :
     """Build the live text generator lazily; None if the SDK can't be wired."""
     try :
-        from application .operations .ai_client import build_text_generate
+        from application .operations .model_router import build_task_generate
 
-        return build_text_generate ()
+        return build_task_generate ("DRAFT",amount_inr =amount_inr ,live =True )
     except Exception :
         return None

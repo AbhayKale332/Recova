@@ -31,10 +31,13 @@ class Settings (BaseSettings ):
 
 
     gemini_api_key :str =""
+
+    # Model names are grouped by router tier rather than by call site. The old
+    # aliases below remain for existing .env files and direct wrapper callers.
+    gemini_nano_model :str ="gemini-flash-lite-latest"
+    gemini_mini_model :str ="gemini-3.6-flash"
+    gemini_full_model :str ="gemini-3-pro"
     gemini_model :str ="gemini-3.6-flash"
-
-
-
     gemini_draft_model :str ="gemini-flash-lite-latest"
 
 
@@ -45,12 +48,19 @@ class Settings (BaseSettings ):
     # because batch drafting dominates token spend.
     gemini_strong_model :str ="gemini-3-pro"
 
-    # "gemini" | "openai". Switches the strong tier only; the cheap tiers stay on
-    # Gemini, where price and latency win for high-volume drafting. The OpenAI
-    # adapter is imported lazily, so the SDK stays an optional dependency.
-    llm_provider :str ="gemini"
+    # "openai" | "gemini". This is a manual provider override; otherwise the
+    # router tries OpenAI first and falls through to Gemini.
+    llm_provider :str ="openai"
     openai_api_key :str =""
+    openai_nano_model :str ="gpt-5.4-nano"
+    openai_mini_model :str ="gpt-5.4-mini"
+    openai_full_model :str ="gpt-5.4"
     openai_model :str ="gpt-5"
+
+    router_stakes_threshold_inr :float =25000
+    # The free daily quota requires opting into sharing that traffic with
+    # OpenAI — this is a real product decision, not a footnote.
+    openai_free_tier :bool =False
 
 
 

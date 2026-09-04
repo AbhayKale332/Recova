@@ -271,6 +271,7 @@ export const hi: Dictionary = {
     casesFromRun: "इस रन के केस",
     whyTitle: "क्यों",
     whyEmpty: "इस केस के लिए कोई निर्णय दर्ज नहीं।",
+    routeLabel: "मॉडल रूट",
     boundsTitle: "सीमाएँ",
     retriesBudget: "ऑटो-डेबिट रीट्राई",
     voiceBudget: "वॉइस कॉल",

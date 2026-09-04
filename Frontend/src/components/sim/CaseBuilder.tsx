@@ -4,7 +4,7 @@ import { ClassChip } from "@/components/ClassChip";
 import { Money } from "@/components/Money";
 import { useI18n } from "@/lib/i18n";
 import { FAILURE_CLASSES } from "@/lib/failure-classes";
-import { Field, NumberInput } from "@/components/sim/ScenarioForm";
+import { Field, NumberInput } from "@/components/sim/FormPrimitives";
 import type { CustomCase } from "@/lib/simulation";
 
 const EMPTY_CASE = (number: number): CustomCase => ({
@@ -15,7 +15,7 @@ const EMPTY_CASE = (number: number): CustomCase => ({
   reply: null,
   retries_used: 0,
   voice_attempts: 0,
-  days_overdue: 0,
+  days_overdue: null,
   outcome_event: null,
   playbook: null,
 });
@@ -120,7 +120,7 @@ export function CaseBuilder({
                     </td>
                     <td className="p-2 align-top"><NumberInput value={item.retries_used} min={0} max={5} disabled={disabled} onChange={(retries_used) => update(index, { retries_used })} /></td>
                     <td className="p-2 align-top"><NumberInput value={item.voice_attempts} min={0} max={5} disabled={disabled} onChange={(voice_attempts) => update(index, { voice_attempts })} /></td>
-                    <td className="p-2 align-top"><NumberInput value={item.days_overdue} min={0} max={365} suffix={t.sim.days} disabled={disabled} onChange={(days_overdue) => update(index, { days_overdue })} /></td>
+                    <td className="p-2 align-top"><NumberInput value={item.days_overdue ?? 0} min={0} max={365} suffix={t.sim.days} disabled={disabled} onChange={(days_overdue) => update(index, { days_overdue })} /></td>
                     <td className="p-2 align-top">
                       <div className="flex gap-1">
                         <button type="button" onClick={() => duplicate(index)} disabled={disabled} className="rounded border border-[var(--border)] px-2 py-1 hover:border-[var(--accent)] disabled:opacity-50">{t.sim.duplicate}</button>
@@ -162,7 +162,7 @@ export function CaseBuilder({
                 <div className="grid grid-cols-3 gap-2">
                   <Field label={t.sim.retriesUsed} hint=""><NumberInput value={item.retries_used} min={0} max={5} disabled={disabled} onChange={(retries_used) => update(index, { retries_used })} /></Field>
                   <Field label={t.sim.voiceUsed} hint=""><NumberInput value={item.voice_attempts} min={0} max={5} disabled={disabled} onChange={(voice_attempts) => update(index, { voice_attempts })} /></Field>
-                  <Field label={t.sim.daysOverdue} hint=""><NumberInput value={item.days_overdue} min={0} max={365} disabled={disabled} onChange={(days_overdue) => update(index, { days_overdue })} /></Field>
+                  <Field label={t.sim.daysOverdue} hint=""><NumberInput value={item.days_overdue ?? 0} min={0} max={365} disabled={disabled} onChange={(days_overdue) => update(index, { days_overdue })} /></Field>
                 </div>
                 <div className="flex justify-end gap-1">
                   <button type="button" onClick={() => duplicate(index)} disabled={disabled} className="rounded border border-[var(--border)] px-2 py-1 text-[12px] hover:border-[var(--accent)] disabled:opacity-50">{t.sim.duplicate}</button>

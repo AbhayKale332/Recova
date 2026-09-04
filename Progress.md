@@ -19,7 +19,7 @@ that was never committed, so treat this list as its canonical home.
 | --- | --- | --- |
 | 1 | Foundation: `lib/` + `hooks/` + UI primitives | **done** (`64d817f`) |
 | 2 | `/console` zone 1 — batch evidence | **done** (`64d817f`), being reworked in step 3 |
-| 3 | `/console` zones 2–3 — case list + case detail + bounds gauge, **now simulation-led** | **in progress** |
+| 3 | `/console` zones 2–3 — case list + case detail + bounds gauge, **now simulation-led** | **done** |
 | 4 | SSE live-run feed inside the case panel | not started |
 | 5 | `/console/guardrails` — stopping rules, escalation queue, policy editor + sandbox | stub route exists |
 | 6 | `/console/audit` — audit trail grouped by node, filterable, exportable | stub route exists |
@@ -50,7 +50,7 @@ and N cases stream through the real recovery engine concurrently.
 - [x] Part 1 — backend: quiet hours + voice cap enforced in the graph; WAL SQLite; simulation rows
       scoped out of the real metrics
 - [x] Part 2 — backend: `application/simulation/` + `POST /api/v1/simulate/batch` (SSE)
-- [ ] Part 3 — frontend: scenario form + sample presets, run progress, projection panel, case list,
+- [x] Part 3 — frontend: scenario form + sample presets, run progress, projection panel, case list,
       case detail panel, bounds gauge, decision trace, probability breakdown
 
 ### Backend, as shipped
@@ -82,17 +82,30 @@ Endpoints: `POST /simulate/batch` (SSE), `GET /simulate/scenarios`, `GET /simula
 
 Measured: 200 cases in ~3.1s, ~65 cases/sec, p95 ~280ms, 8 workers.
 
-**LLM tiers.** `build_strong_generate()` in `ai_client.py` owns provider selection; the assistant
-moved onto it. `LLM_PROVIDER=openai` switches the strong tier only, with a lazy import so the
-OpenAI SDK stays optional. Diagnosis and drafting are unchanged.
+**LLM router.** `operations/model_router.py` now chooses provider and tier per call. OpenAI is
+tried first and Gemini is the transport fallback; both SDK imports stay lazy, and every routed
+response carries a readable `RouteDecision`. Diagnosis, live drafting, and the assistant use
+`DIAGNOSE`, `DRAFT`, and `DECIDE` respectively; malformed/refused/low-confidence responses get
+one stronger retry. The pure `/api/v1/router/explain` endpoint and the case-panel chip make the
+choice visible without making a model call. Batch drafting remains template-only.
 
-Tests: 251 passing (was 218).
+Tests: 258 passing (was 251).
 
 ---
 
 ## Decisions log
 
 Newest first. Record *why*, not just what.
+
+### 2026-09-05 — Stakes raise the model tier automatically
+
+The router raises a call one tier when ₹25,000 or more is at stake because a high-value recovery
+deserves more capable reasoning by default; making that an operator opt-in would leave the most
+expensive mistakes on the cheapest model. The threshold is a setting, and guardrail proximity can
+raise the tier again up to `full`.
+
+### 2026-09-05 — Scenario percentages cannot rewrite authored cases
+A scenario percentage must never rewrite a case the operator wrote. Settlement quirks are apportioned across generated cases only, so authored outcomes remain their own event or probability draw.
 
 ### 2026-09-04 — A cooperative reply must not guarantee payment
 First cut had the customer's reply decide settlement, which produced a 99.2% GRRR — the recovered
@@ -151,8 +164,7 @@ outcome. OpenAI stays a lazy import — an optional dependency, not a required o
 
 ## Known issues / debt
 
-- **`Backend/.env` is committed with live credentials** (Razorpay, Gemini, Twilio, encryption key).
-  Rotate every key and add it to `.gitignore`. Not addressed in step 3.
+- **Credentials live in an untracked `Backend/.env`** and must stay untracked; `.gitignore` covers it.
 - **No migrations.** `init_db()` runs `Base.metadata.create_all`, which only creates *missing*
   tables — an altered column will not apply. Alembic should own the schema once it stabilises.
 - **`POST /admin/seed` wipes every table** with no auth, bypassing the append-only audit guards via

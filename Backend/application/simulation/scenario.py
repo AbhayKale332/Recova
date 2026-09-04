@@ -62,7 +62,7 @@ class CustomCase (BaseModel ):
     reply :ReplyKind |None =None
     retries_used :int =Field (0 ,ge =0 ,le =5 )
     voice_attempts :int =Field (0 ,ge =0 ,le =5 )
-    days_overdue :int =Field (0 ,ge =0 ,le =365 )
+    days_overdue :int |None =Field (None ,ge =0 ,le =365 )
     outcome_event :str |None =Field (None ,max_length =64 )
     playbook :str |None =Field (None ,max_length =64 )
 
@@ -311,16 +311,17 @@ def plan (scenario :Scenario ,run_id :str )->list [PlannedCase ]:
     classes =_weighted_cycle (shape .class_mix ,shape .count )
     replies =_weighted_cycle (edges .reply_mix ,shape .count )
 
-    total_count =len (scenario .custom_cases )+shape .count
-    late_cutoff =total_count *edges .late_settlement_pct /100
-    cross_cutoff =late_cutoff +total_count *edges .cross_device_pct /100
+    # Settlement quirks are apportioned over generated cases only. Authored
+    # outcomes belong to the operator and must never be rewritten by a scenario percentage.
+    late_cutoff =shape .count *edges .late_settlement_pct /100
+    cross_cutoff =late_cutoff +shape .count *edges .cross_device_pct /100
 
     planned =[]
     for index ,custom in enumerate (scenario .custom_cases ):
         failure_class =custom .failure_class
-        profile =class_profile (failure_class )
         amount_minor =int (round (custom .amount_inr *100 ))
-        days_overdue =custom .days_overdue
+        # Unset authored class-4 cases inherit the scenario's overdue template.
+        days_overdue =custom .days_overdue if custom .days_overdue is not None else (edges .days_overdue if failure_class ==4 else 0)
         reply =custom .reply
         reply_text =custom .reply_text
         effective_playbook =custom .playbook
@@ -332,10 +333,6 @@ def plan (scenario :Scenario ,run_id :str )->list [PlannedCase ]:
         outcome_event =custom .outcome_event
         if outcome_event is None and not stops_early :
             outcome_event ="payment.captured"if _draw (scenario ,index )<estimate .p else None
-        if custom .outcome_event is None and index <late_cutoff :
-            outcome_event ="payment.authorized"
-        elif custom .outcome_event is None and index <cross_cutoff :
-            outcome_event ="payment.captured"
         planned .append (
         PlannedCase (
         transaction_id =f"sim_{run_id [:8 ]}_custom_{index :04d}",
@@ -368,9 +365,9 @@ def plan (scenario :Scenario ,run_id :str )->list [PlannedCase ]:
         )
         message =reply_text if reply_text is not None else _REPLY_TEXT .get (reply )
         stops_early =bool (message and screen_user_message (message ).disposition )
-        if index <late_cutoff :
+        if generated_index <late_cutoff :
             outcome_event ="payment.authorized"
-        elif index <cross_cutoff :
+        elif generated_index <cross_cutoff :
             outcome_event ="payment.captured"
         elif stops_early :
             outcome_event =None

@@ -8,6 +8,7 @@ from typing import Any ,Callable
 from pydantic import BaseModel ,ValidationError
 
 from application .constants import FailureClass ,Playbook
+from application .operations .model_router import ModelRouter
 
 logger =logging .getLogger (__name__ )
 
@@ -47,8 +48,10 @@ class _DiagnosisPayload (BaseModel ):
 
 
 class DiagnosisEngine :
-    def __init__ (self ,generate :GenerateFn ):
+    def __init__ (self ,generate :GenerateFn |None =None ,router :ModelRouter |None =None ):
         self ._generate =generate
+        self ._router =router
+        self .last_route_decision =None
 
     def diagnose (
     self ,
@@ -58,9 +61,20 @@ class DiagnosisEngine :
     user_message :str |None =None ,
     )->Diagnosis :
         prompt =self ._build_prompt (failure_class ,telemetry ,user_message )
+        self .last_route_decision =None
         # LLM output is advisory; invalid responses always fall back to the class-specific default.
         try :
-            raw =self ._generate (prompt )
+            if self ._router is not None:
+                amount_minor =telemetry .get ("amount_minor",0 )
+                routed =self ._router .call (
+                "DIAGNOSE" ,prompt ,amount_inr =float (amount_minor )/100
+                )
+                self .last_route_decision =routed .decision
+                raw =routed .result
+            elif self ._generate is not None:
+                raw =self ._generate (prompt )
+            else:
+                raise RuntimeError ("No diagnosis generator configured")
             payload =_DiagnosisPayload .model_validate_json (raw )
         except (ValidationError ,ValueError ,json .JSONDecodeError )as exc :
             logger .warning ("Diagnosis response parsing failed (%s); applying the deterministic class default.",exc )

@@ -12,6 +12,7 @@ admin_api ,
 assistant_api ,
 health_api ,
 metrics_api ,
+router_api ,
 policy_api ,
 simulation_api ,
 stream_api ,
@@ -66,6 +67,7 @@ allow_headers =["*"],
 app .include_router (health_api .router ,prefix ="/api/v1")
 app .include_router (webhook_api .router ,prefix ="/api/v1")
 app .include_router (metrics_api .router ,prefix ="/api/v1")
+app .include_router (router_api .router ,prefix ="/api/v1")
 app .include_router (stream_api .router ,prefix ="/api/v1")
 app .include_router (transaction_api .router ,prefix ="/api/v1")
 app .include_router (policy_api .router ,prefix ="/api/v1")
