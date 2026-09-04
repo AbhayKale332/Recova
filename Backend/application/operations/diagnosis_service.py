@@ -9,17 +9,15 @@ from pydantic import BaseModel ,ValidationError
 
 from application .constants import FailureClass ,Playbook
 from application .operations .model_router import ModelRouter
+from application .operations .playbook_map import DEFAULT_PLAYBOOK
 
 logger =logging .getLogger (__name__ )
 
 
 
-_DEFAULT_PLAYBOOK :dict [FailureClass ,Playbook ]={
-FailureClass .REALTIME_DEGRADATION :Playbook .REROUTE_RAIL ,
-FailureClass .CHECKOUT_ABANDONMENT :Playbook .UPI_AUTOPAY_NUDGE ,
-FailureClass .SUBSCRIPTION_MANDATE :Playbook .SALARY_CYCLE_SEQUENCER ,
-FailureClass .B2B_RECEIVABLES :Playbook .P2P_TRACKER ,
-}
+# Compatibility spelling for older callers; new code imports DEFAULT_PLAYBOOK
+# from the neutral operations map.
+_DEFAULT_PLAYBOOK = DEFAULT_PLAYBOOK
 
 GenerateFn =Callable [[str ],str ]
 
@@ -99,12 +97,12 @@ class DiagnosisEngine :
 
 
             logger .warning ("The model returned unsupported playbook %r; applying the deterministic class default.",value )
-            return _DEFAULT_PLAYBOOK [failure_class ]
+            return DEFAULT_PLAYBOOK [failure_class ]
 
     def _fallback (self ,failure_class :FailureClass )->Diagnosis :
         return Diagnosis (
         root_cause ="UNDIAGNOSED",
-        recommended_playbook =_DEFAULT_PLAYBOOK [failure_class ],
+        recommended_playbook =DEFAULT_PLAYBOOK [failure_class ],
         confidence =0.0 ,
         )
 

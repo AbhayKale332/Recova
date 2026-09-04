@@ -30,8 +30,9 @@ screen_user_message ,
 voice_attempts_exhausted ,
 )
 from application .constants import StoppingRule
-from application .entities import AuditTrail
 from application .helpers import next_quiet_hours_end ,next_salary_window
+from application .operations .playbook_map import PLAYBOOK_ACTION
+from application .operations .voice_attempts import voice_attempt_count
 
 if TYPE_CHECKING :
     from application .workflow .recovery_graph import OrchestratorDeps
@@ -40,44 +41,8 @@ _RECOVERY_OUTCOMES ={"payment.captured","payment.authorized"}
 
 
 
-# This translation is policy-neutral; the PolicySandbox validates the resulting action before dispatch.
-_PLAYBOOK_ACTION :dict [Playbook ,tuple [InterventionAction ,InterventionChannel |None ]]={
-Playbook .REROUTE_RAIL :(InterventionAction .GENERATE_PAYMENT_LINK ,InterventionChannel .PAYMENT_LINK ),
-Playbook .PREAUTH_LINK :(InterventionAction .GENERATE_PAYMENT_LINK ,InterventionChannel .PAYMENT_LINK ),
-Playbook .UPI_AUTOPAY_NUDGE :(InterventionAction .SEND_WHATSAPP ,InterventionChannel .WHATSAPP ),
-Playbook .NEGOTIATION :(InterventionAction .OFFER_FEE_WAIVER ,InterventionChannel .WHATSAPP ),
-Playbook .SALARY_CYCLE_SEQUENCER :(InterventionAction .RETRY_CHARGE ,None ),
-Playbook .MANDATE_REFRESH :(InterventionAction .VOICE_CALL ,InterventionChannel .VOICE ),
-Playbook .P2P_TRACKER :(InterventionAction .SEND_WHATSAPP ,InterventionChannel .WHATSAPP ),
-}
-
-
 def _txn (deps :"OrchestratorDeps",transaction_id :str )->TransactionState :
     return deps .db .query (TransactionState ).filter_by (transaction_id =transaction_id ).one ()
-
-
-def _voice_attempts (deps :"OrchestratorDeps",transaction_id :str ,state :RecoveryState )->int :
-    """How many voice calls this case has already placed.
-
-    Read from the audit trail rather than a column so the count survives a
-    restart and matches exactly what the bounds gauge derives on the client
-    (see ``computeBounds`` in Frontend/src/lib/bounds.ts). A caller that already
-    knows the number - a simulated scenario starting a case mid-history - may
-    pass it in ``state`` instead.
-    """
-    seeded =state .get ("voice_attempts")
-    if seeded is not None :
-        return int (seeded )
-
-    rows =(
-    deps .db .query (AuditTrail )
-    .filter (
-    AuditTrail .transaction_id ==transaction_id ,
-    AuditTrail .action_type ==ActionType .INTERVENTION_DISPATCH ,
-    )
-    .all ()
-    )
-    return sum (1 for row in rows if (row .payload or {}).get ("channel")==InterventionChannel .VOICE .value )
 
 
 def _finalize (deps ,transaction_id ,disposition ,node_name ,payload ,outcome )->None :
@@ -197,7 +162,7 @@ def build_nodes (deps :"OrchestratorDeps")->dict [str ,Callable [[RecoveryState 
         transaction_id =state ["transaction_id"]
         txn =_txn (deps ,transaction_id )
         playbook =Playbook (state ["playbook"])
-        action_type ,channel =_PLAYBOOK_ACTION [playbook ]
+        action_type ,channel =PLAYBOOK_ACTION [playbook ]
 
         # Precedence below is quiet hours -> retry cap -> voice cap, and must stay
         # identical to armedRule() in Frontend/src/lib/bounds.ts. Quiet hours bind
@@ -239,7 +204,7 @@ def build_nodes (deps :"OrchestratorDeps")->dict [str ,Callable [[RecoveryState 
             return {"disposition":"CANCELLED","stopping_rule":"RBI_MAX_RETRIES"}
 
         if channel ==InterventionChannel .VOICE :
-            attempts =_voice_attempts (deps ,transaction_id ,state )
+            attempts =voice_attempt_count (deps .db ,transaction_id ,state .get ("voice_attempts"))
             if voice_attempts_exhausted (attempts ):
                 _finalize (
                 deps ,transaction_id ,"CANCELLED",NodeName .EXECUTE_INTERVENTION ,

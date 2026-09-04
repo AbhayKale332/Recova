@@ -24,12 +24,13 @@ from application .entities import CallSession ,CallTurn ,Message ,TransactionSta
 from application .operations .audit_service import record_audit
 from application .operations .batch_seed import class_profile
 from application .operations .conversation_service import build_call ,persona_for
-from application .operations .diagnosis_service import _DEFAULT_PLAYBOOK
+from application .operations .playbook_map import DEFAULT_PLAYBOOK
 from application .operations .message_drafter import draft_message
 from application .operations .escalation_service import enqueue_escalation
 from application .operations .language_parser import extract_p2p_date
 from application .operations .reconciliation_service import compute_metrics
 from application .operations .compliance_rules import screen_user_message
+from application .operations .wire import _ser_msg
 
 Event =tuple [str ,dict ]
 
@@ -45,7 +46,7 @@ def _diag (fc :int )->tuple [str ,str ,float ]:
     profile =class_profile (fc )
     return (
     profile ["root_cause"],
-    _DEFAULT_PLAYBOOK [FailureClass (fc )].value ,
+    DEFAULT_PLAYBOOK [FailureClass (fc )].value ,
     profile ["confidence"],
     )
 
@@ -67,20 +68,6 @@ def _customer_reply (run_outcome :str ,persona :dict )->str :
     if run_outcome =="p2p":
         return persona ["p2p"]
     return persona ["ok"]
-
-
-def _ser_msg (m :Message )->dict :
-    return {
-    "id":m .id ,
-    "channel":m .channel .value ,
-    "direction":m .direction .value ,
-    "sender":m .sender .value ,
-    "body":m .body ,
-    "status":m .status .value ,
-    "seq":m .seq ,
-    "meta":m .meta_json ,
-    "created_at":m .created_at .isoformat (),
-    }
 
 
 def run_recovery (

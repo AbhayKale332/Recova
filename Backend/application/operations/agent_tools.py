@@ -1,7 +1,7 @@
 """Closed agent tool set and the deterministic gates around each proposal.
 
-The first four channel pairings mirror ``_PLAYBOOK_ACTION`` in
-``workflow/workflow_nodes.py`` and must stay consistent with it.  ``AgentTool``
+The first four channel pairings mirror ``PLAYBOOK_ACTION`` in
+``operations/playbook_map.py`` and must stay consistent with it.  ``AgentTool``
 is intentionally its own enum: ``InterventionAction`` is the closed set of
 things that reach a channel adapter, while ``SCHEDULE_RETRY``,
 ``HANDOFF_TO_HUMAN``, and ``STOP`` are dispositions that never dispatch.
@@ -33,7 +33,7 @@ from application.constants import (
     StoppingRule,
     TransactionLifecycleState,
 )
-from application.entities import AuditTrail, TransactionState
+from application.entities import TransactionState
 from application.helpers import next_quiet_hours_end, next_salary_window, now_ist as _now_ist
 from application.operations import policy_repository
 from application.operations.audit_service import record_audit
@@ -43,7 +43,7 @@ from application.operations.compliance_rules import (
     retry_cap_exceeded,
     voice_attempts_exhausted,
 )
-from application.operations.diagnosis_service import _DEFAULT_PLAYBOOK
+from application.operations.playbook_map import DEFAULT_PLAYBOOK, PLAYBOOK_ACTION
 from application.operations.escalation_service import enqueue_escalation
 from application.operations.model_router import (
     ModelRouter,
@@ -53,7 +53,7 @@ from application.operations.model_router import (
     router,
 )
 from application.operations.policy_guard import PolicySandbox, ProposedAction
-from application.workflow.workflow_nodes import _PLAYBOOK_ACTION
+from application.operations.voice_attempts import voice_attempt_count
 
 logger = logging.getLogger(__name__)
 
@@ -141,23 +141,11 @@ _TOOL_RESOLUTION: dict[
 
 
 def _tool_for_playbook(playbook) -> AgentTool:
-    action, channel = _PLAYBOOK_ACTION[playbook]
+    action, channel = PLAYBOOK_ACTION[playbook]
     for tool, (tool_action, tool_channel, _state) in _TOOL_RESOLUTION.items():
         if tool_action == action and tool_channel == channel:
             return tool
     raise ValueError(f"No AgentTool mapping for playbook {playbook!r}")
-
-
-def _voice_attempt_count(db: Session, transaction_id: str) -> int:
-    rows = (
-        db.query(AuditTrail)
-        .filter(
-            AuditTrail.transaction_id == transaction_id,
-            AuditTrail.action_type == ActionType.INTERVENTION_DISPATCH,
-        )
-        .all()
-    )
-    return sum(1 for row in rows if (row.payload or {}).get("channel") == InterventionChannel.VOICE.value)
 
 
 def _set_state(
@@ -221,11 +209,12 @@ def decide_tool(
     model_router: ModelRouter | None = None,
     sandbox: PolicySandbox | None = None,
 ) -> AgentDecision:
-    """Route DECIDE, coerce its closed tool, and apply the existing gates.
+    """Evaluate the gates and commit the resulting transition and audit rows.
 
-    This function deliberately does not dispatch a channel action. Part 3 owns
-    the interactive session and can use the resolved action/channel after this
-    function has proven that the proposal is allowed.
+    This evaluates quiet-hours, retry, voice-cap, and policy gates, then
+    commits the resulting lifecycle transition, escalation, and audit rows.
+    Call it exactly once per turn. It does not dispatch a channel adapter;
+    callers use the returned decision to perform an allowed dispatch.
     """
     txn = db.query(TransactionState).filter_by(transaction_id=transaction_id).one_or_none()
     if txn is None:
@@ -233,7 +222,7 @@ def decide_tool(
 
     fc = FailureClass(failure_class if failure_class is not None else txn.failure_class)
     policy = policy_repository.get_policy(db)
-    attempts = _voice_attempt_count(db, transaction_id) if voice_attempts is None else int(voice_attempts)
+    attempts = voice_attempt_count(db, transaction_id, voice_attempts)
     amount_inr = float(txn.amount_minor) / 100
     active_router = model_router or router
     prompt = _decide_prompt(txn, fc, policy=policy, voice_attempts=attempts)
@@ -273,7 +262,7 @@ def decide_tool(
         # any proposed action so an unoffered string cannot widen permissions.
         proposed_tool = AgentTool(raw_tool)
     except (TypeError, ValueError):
-        default_playbook = _DEFAULT_PLAYBOOK[fc]
+        default_playbook = DEFAULT_PLAYBOOK[fc]
         logger.warning(
             "The model returned unsupported tool %r; applying the deterministic class default.",
             raw_tool,

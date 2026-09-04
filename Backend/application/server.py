@@ -9,7 +9,8 @@ from application .settings import settings
 from application .persistence import init_db
 from application .endpoints import (
 admin_api ,
-assistant_api ,
+    assistant_api ,
+    live_api ,
 health_api ,
 metrics_api ,
 router_api ,
@@ -32,6 +33,7 @@ async def lifespan (app :FastAPI ):
     # Simulation runs accumulate on every click, so old ones are dropped at
     # startup rather than left to grow the database across a demo afternoon.
     _prune_simulation_runs ()
+    _prune_live_sessions ()
     yield
 
 
@@ -43,6 +45,17 @@ def _prune_simulation_runs ()->None :
     try :
         store .prune (db )
     finally :
+        db .close ()
+
+
+def _prune_live_sessions ()->None :
+    from application.persistence import SessionLocal
+    from application.operations.live_session import prune_sessions
+
+    db =SessionLocal ()
+    try:
+        prune_sessions (db )
+    finally:
         db .close ()
 
 
@@ -69,6 +82,7 @@ app .include_router (webhook_api .router ,prefix ="/api/v1")
 app .include_router (metrics_api .router ,prefix ="/api/v1")
 app .include_router (router_api .router ,prefix ="/api/v1")
 app .include_router (stream_api .router ,prefix ="/api/v1")
+app .include_router (live_api .router ,prefix ="/api/v1")
 app .include_router (transaction_api .router ,prefix ="/api/v1")
 app .include_router (policy_api .router ,prefix ="/api/v1")
 app .include_router (simulation_api .router ,prefix ="/api/v1")

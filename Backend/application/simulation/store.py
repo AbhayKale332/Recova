@@ -75,6 +75,10 @@ def list_runs (db :Session )->list [dict ]:
     """Every simulation run currently in the database, newest first."""
     runs :dict [str ,dict ]={}
     for txn in db .query (TransactionState ).all ():
+        if (txn.metadata_json or {}).get ("live_session_id"):
+            # Live sessions have their own in-process lifecycle. Keeping them
+            # out of simulation pruning protects their append-only evidence.
+            continue
         run_id =_run_id (txn )
         if not run_id :
             continue

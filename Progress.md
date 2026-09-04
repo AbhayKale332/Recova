@@ -110,6 +110,14 @@ raise the tier again up to `full`.
 `AgentTool` is its own enum because `InterventionAction` is the closed set of things that reach a
 channel adapter; dispositions such as scheduling, human handoff, and stop are not dispatches.
 
+### 2026-09-05 — Live sessions use an in-process queue
+
+The interactive theatre uses one in-process `asyncio.Queue` per session because it is a
+single-worker demo surface; introducing a shared broker would make a deployment claim the current
+runtime cannot back. The queue carries presentation events, while the existing transaction,
+message, call, escalation, and audit tables remain the durable record. Every human turn runs
+`screen_user_message()` ahead of the model so opt-outs and disputes cannot be overridden by an LLM.
+
 ### 2026-09-05 — Scenario percentages cannot rewrite authored cases
 A scenario percentage must never rewrite a case the operator wrote. Settlement quirks are apportioned across generated cases only, so authored outcomes remain their own event or probability draw.
 
@@ -170,7 +178,6 @@ outcome. OpenAI stays a lazy import — an optional dependency, not a required o
 
 ## Known issues / debt
 
-- **Credentials live in an untracked `Backend/.env`** and must stay untracked; `.gitignore` covers it.
 - **No migrations.** `init_db()` runs `Base.metadata.create_all`, which only creates *missing*
   tables — an altered column will not apply. Alembic should own the schema once it stabilises.
 - **`POST /admin/seed` wipes every table** with no auth, bypassing the append-only audit guards via

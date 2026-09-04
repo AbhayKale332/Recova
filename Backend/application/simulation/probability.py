@@ -300,13 +300,12 @@ def observed_posteriors (rows :list [tuple [int ,str ,str |None ,bool ]])->dict 
 def features_for_class (failure_class :int )->tuple [str ,str |None ]:
     """The playbook and channel the engine would pick for a class by default.
 
-    Mirrors ``_DEFAULT_PLAYBOOK`` in diagnosis_service and ``_PLAYBOOK_ACTION`` in
-    workflow_nodes, so a projection made before a run predicts the same path the
+    Mirrors ``DEFAULT_PLAYBOOK`` and ``PLAYBOOK_ACTION`` in the neutral operations
+    map, so a projection made before a run predicts the same path the
     run will actually take.
     """
-    from application .operations .diagnosis_service import _DEFAULT_PLAYBOOK
-    from application .workflow .workflow_nodes import _PLAYBOOK_ACTION
+    from application .operations .playbook_map import DEFAULT_PLAYBOOK, PLAYBOOK_ACTION
 
-    playbook =_DEFAULT_PLAYBOOK [FailureClass (failure_class )]
-    _action ,channel =_PLAYBOOK_ACTION [playbook ]
+    playbook =DEFAULT_PLAYBOOK [FailureClass (failure_class )]
+    _action ,channel =PLAYBOOK_ACTION [playbook ]
     return playbook .value ,(channel .value if channel else None )

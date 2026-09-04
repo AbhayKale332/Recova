@@ -262,11 +262,11 @@ scenario :Scenario ,failure_class :int ,amount_inr :float ,days_overdue :int ,pl
     playbook ,channel =probability .features_for_class (failure_class )
     if playbook_override :
         from application .constants import Playbook
-        from application .workflow .workflow_nodes import _PLAYBOOK_ACTION
+        from application .operations .playbook_map import PLAYBOOK_ACTION
 
         try :
             selected =Playbook (playbook_override )
-            _action ,selected_channel =_PLAYBOOK_ACTION [selected]
+            _action ,selected_channel =PLAYBOOK_ACTION [selected]
             playbook =selected .value
             channel =selected_channel .value if selected_channel else None
         except (ValueError ,KeyError ):

@@ -322,16 +322,11 @@ class ModelRouter:
         prompt: str,
         *,
         validator: Callable[[str], bool] | None = None,
-        provider_override: str | None = None,
-        model_override: str | None = None,
-        api_key_override: str | None = None,
         **kwargs,
     ) -> RoutedResult:
         task_name = _normalise_task(task)
         initial = explain_route(
             task_name,
-            provider_override=provider_override,
-            model_override=model_override,
             **kwargs,
         )
         validator = validator or (lambda output: not _needs_escalation(task_name, output))
@@ -345,7 +340,6 @@ class ModelRouter:
                 next_tier = _raise_tier(initial.tier)
                 decision = explain_route(
                     task_name,
-                    provider_override=provider_override,
                     **kwargs,
                     escalated_from=initial.tier,
                 )
@@ -354,11 +348,11 @@ class ModelRouter:
                 decision = replace(
                     decision,
                     tier=next_tier,
-                    model=_model_for(_provider_order(provider_override)[0], next_tier),
+                    model=_model_for(_provider_order()[0], next_tier),
                     reason=_reason(
                         floor=_TASK_FLOORS[task_name],
                         tier=next_tier,
-                        model=_model_for(_provider_order(provider_override)[0], next_tier),
+                        model=_model_for(_provider_order()[0], next_tier),
                         raised_by=decision.raised_by,
                         details=[],
                         escalated_from=initial.tier,
@@ -366,17 +360,11 @@ class ModelRouter:
                 )
 
             response_received = False
-            for provider in _provider_order(provider_override):
-                model = (
-                    model_override
-                    if provider == provider_override and model_override
-                    else _model_for(provider, decision.tier)
-                )
+            for provider in _provider_order():
+                model = _model_for(provider, decision.tier)
                 started = time.perf_counter()
                 try:
                     request_kwargs = {"json_mode": _json_response(task_name)}
-                    if api_key_override and provider == provider_override:
-                        request_kwargs["api_key"] = api_key_override
                     output, tokens = _PROVIDER_REQUESTS[provider](prompt, model, **request_kwargs)
                 except Exception as exc:
                     failures.append(f"{provider}: {exc}")
@@ -441,9 +429,6 @@ def build_task_generate(
     voice_attempts: int = 0,
     discount_pct: float | None = None,
     policy_cap_pct: float | None = None,
-    provider: str | None = None,
-    model: str | None = None,
-    api_key: str | None = None,
 ) -> Callable[[str], str]:
     """Adapt the routed result to the legacy ``generate(prompt) -> str`` API."""
 
@@ -457,9 +442,6 @@ def build_task_generate(
             voice_attempts=voice_attempts,
             discount_pct=discount_pct,
             policy_cap_pct=policy_cap_pct,
-            provider_override=provider,
-            model_override=model,
-            api_key_override=api_key,
         ).result
 
     return generate

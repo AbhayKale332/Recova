@@ -39,7 +39,8 @@ TransactionState ,
 from application .workflow .recovery_graph import OrchestratorDeps ,build_recovery_graph
 from application .operations .audit_service import record_audit
 from application .operations .conversation_service import build_thread ,persona_for
-from application .operations .diagnosis_service import Diagnosis ,_DEFAULT_PLAYBOOK
+from application .operations .diagnosis_service import Diagnosis
+from application .operations .playbook_map import DEFAULT_PLAYBOOK
 from application .operations .language_parser import extract_p2p_date
 from application .operations .policy_guard import PolicySandbox
 from application .helpers import IST ,next_salary_window ,utcnow
@@ -192,7 +193,7 @@ class _OfflineDiagnosis :
         profile =_CLASS_PROFILE [failure_class ]
         return Diagnosis (
         root_cause =profile ["root_cause"],
-        recommended_playbook =_DEFAULT_PLAYBOOK [failure_class ],
+        recommended_playbook =DEFAULT_PLAYBOOK [failure_class ],
         confidence =profile ["confidence"],
         )
 
@@ -311,7 +312,7 @@ _BULK_OUTCOMES =["recovered","optout","dispute","p2p"]
 def _bulk_audit (db ,txn :TransactionState ,fc :FailureClass ,state :TransactionLifecycleState )->None :
     """A short, state-consistent trail so a bulk case reads like a real one."""
     profile =_CLASS_PROFILE [fc ]
-    playbook =_DEFAULT_PLAYBOOK [fc ].value
+    playbook =DEFAULT_PLAYBOOK [fc ].value
     record_audit (db ,transaction_id =txn .transaction_id ,node_name =NodeName .INGEST ,
     action_type =ActionType .STATE_TRANSITION ,
     payload ={"event":"FLAGGED","class":profile ["label"]},outcome =Outcome .SUCCESS )
@@ -363,7 +364,7 @@ def _ingest_diagnose (db ,txn :TransactionState ,fc :FailureClass )->None :
     record_audit (db ,transaction_id =txn .transaction_id ,node_name =NodeName .DIAGNOSE ,
     action_type =ActionType .STATE_TRANSITION ,
     payload ={"root_cause":profile ["root_cause"],
-    "recommended_playbook":_DEFAULT_PLAYBOOK [fc ].value ,
+    "recommended_playbook":DEFAULT_PLAYBOOK [fc ].value ,
     "confidence":profile ["confidence"]},outcome =Outcome .SUCCESS )
 
 
