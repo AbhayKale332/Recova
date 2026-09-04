@@ -1,5 +1,6 @@
 """Typed state contract passed between recovery workflow nodes."""
 
+from datetime import datetime
 from typing import Any ,Optional ,TypedDict
 
 
@@ -15,6 +16,13 @@ class RecoveryState (TypedDict ,total =False ):
     retry_count :int
 
     proposed_discount_pct :Optional [float ]
+
+    voice_attempts :int
+
+    # IST wall clock the compliance gates are evaluated against. Injected rather
+    # than read from the system clock so a simulated scenario can ask what the
+    # engine would do at 21:40, and so tests are not time-of-day dependent.
+    now_ist :Optional [datetime ]
 
 
     outcome_event :Optional [str ]

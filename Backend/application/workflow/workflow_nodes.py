@@ -22,8 +22,16 @@ from application .workflow .workflow_state import RecoveryState
 from application .operations .audit_service import record_audit
 from application .operations .escalation_service import enqueue_escalation
 from application .operations .policy_guard import ProposedAction
-from application .operations .compliance_rules import retry_cap_exceeded ,screen_user_message
-from application .helpers import next_salary_window
+from application .operations .compliance_rules import (
+VOICE_ATTEMPT_CAP ,
+is_within_quiet_hours ,
+retry_cap_exceeded ,
+screen_user_message ,
+voice_attempts_exhausted ,
+)
+from application .constants import StoppingRule
+from application .entities import AuditTrail
+from application .helpers import next_quiet_hours_end ,next_salary_window
 
 if TYPE_CHECKING :
     from application .workflow .recovery_graph import OrchestratorDeps
@@ -46,6 +54,30 @@ Playbook .P2P_TRACKER :(InterventionAction .SEND_WHATSAPP ,InterventionChannel .
 
 def _txn (deps :"OrchestratorDeps",transaction_id :str )->TransactionState :
     return deps .db .query (TransactionState ).filter_by (transaction_id =transaction_id ).one ()
+
+
+def _voice_attempts (deps :"OrchestratorDeps",transaction_id :str ,state :RecoveryState )->int :
+    """How many voice calls this case has already placed.
+
+    Read from the audit trail rather than a column so the count survives a
+    restart and matches exactly what the bounds gauge derives on the client
+    (see ``computeBounds`` in Frontend/src/lib/bounds.ts). A caller that already
+    knows the number - a simulated scenario starting a case mid-history - may
+    pass it in ``state`` instead.
+    """
+    seeded =state .get ("voice_attempts")
+    if seeded is not None :
+        return int (seeded )
+
+    rows =(
+    deps .db .query (AuditTrail )
+    .filter (
+    AuditTrail .transaction_id ==transaction_id ,
+    AuditTrail .action_type ==ActionType .INTERVENTION_DISPATCH ,
+    )
+    .all ()
+    )
+    return sum (1 for row in rows if (row .payload or {}).get ("channel")==InterventionChannel .VOICE .value )
 
 
 def _finalize (deps ,transaction_id ,disposition ,node_name ,payload ,outcome )->None :
@@ -115,6 +147,14 @@ def build_nodes (deps :"OrchestratorDeps")->dict [str ,Callable [[RecoveryState 
         telemetry =state .get ("telemetry",{}),
         user_message =state .get ("user_message"),
         )
+        # A custom scenario may pin the playbook while keeping diagnosis advisory.
+        # The override is scoped to this graph invocation and never touches policy.
+        override =state .get ("playbook")
+        if override :
+            try :
+                diagnosis.recommended_playbook =Playbook (override )
+            except ValueError :
+                pass
         record_audit (
         deps .db ,
         transaction_id =transaction_id ,
@@ -155,6 +195,35 @@ def build_nodes (deps :"OrchestratorDeps")->dict [str ,Callable [[RecoveryState 
         playbook =Playbook (state ["playbook"])
         action_type ,channel =_PLAYBOOK_ACTION [playbook ]
 
+        # Precedence below is quiet hours -> retry cap -> voice cap, and must stay
+        # identical to armedRule() in Frontend/src/lib/bounds.ts. Quiet hours bind
+        # first because they gate every outbound channel.
+
+        # TRAI quiet hours govern outbound *contact*, so a channel-less auto-debit
+        # retry is exempt. This defers the case; it never cancels it.
+        clock =state .get ("now_ist")or deps .clock ()
+        if channel is not None and is_within_quiet_hours (clock ):
+            resume_at =next_quiet_hours_end (clock )
+            txn .current_state =TransactionLifecycleState .WAITING
+            deps .db .commit ()
+            record_audit (
+            deps .db ,
+            transaction_id =transaction_id ,
+            node_name =NodeName .EXECUTE_INTERVENTION ,
+            action_type =ActionType .RETRY_SCHEDULED ,
+            payload ={
+            "stopping_rule":StoppingRule .TRAI_QUIET_HOURS .value ,
+            "reason":f"TRAI quiet hours - no contact until {resume_at .strftime ('%H:%M')} IST.",
+            "scheduled_for":resume_at .isoformat (),
+            "deferred_action":action_type .value ,
+            },
+            outcome =Outcome .SUCCESS ,
+            )
+            return {
+            "disposition":"WAITING",
+            "stopping_rule":StoppingRule .TRAI_QUIET_HOURS .value ,
+            "lifecycle":TransactionLifecycleState .WAITING .value ,
+            }
 
         if action_type ==InterventionAction .RETRY_CHARGE and retry_cap_exceeded (
         state .get ("retry_count",0 )
@@ -164,6 +233,22 @@ def build_nodes (deps :"OrchestratorDeps")->dict [str ,Callable [[RecoveryState 
             {"stopping_rule":"RBI_MAX_RETRIES"},Outcome .SUCCESS ,
             )
             return {"disposition":"CANCELLED","stopping_rule":"RBI_MAX_RETRIES"}
+
+        if channel ==InterventionChannel .VOICE :
+            attempts =_voice_attempts (deps ,transaction_id ,state )
+            if voice_attempts_exhausted (attempts ):
+                _finalize (
+                deps ,transaction_id ,"CANCELLED",NodeName .EXECUTE_INTERVENTION ,
+                {
+                "stopping_rule":StoppingRule .VOICE_ATTEMPT_CAP .value ,
+                "reason":f"Voice attempt cap reached ({attempts } of {VOICE_ATTEMPT_CAP } calls in 72 hours).",
+                },
+                Outcome .SUCCESS ,
+                )
+                return {
+                "disposition":"CANCELLED",
+                "stopping_rule":StoppingRule .VOICE_ATTEMPT_CAP .value ,
+                }
 
         # Build the action from persisted transaction data, then validate it before any external call.
         action =ProposedAction (

@@ -1,11 +1,13 @@
 """LangGraph definition for the durable ingest, diagnosis, intervention, and reconciliation flow."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass ,field
+from datetime import datetime
 from typing import Callable
 
 from langgraph .graph import END ,START ,StateGraph
 from sqlalchemy .orm import Session
 
+from application .helpers import now_ist
 from application .workflow import workflow_nodes as node_defs
 from application .workflow .workflow_state import RecoveryState
 from application .operations .diagnosis_service import DiagnosisEngine
@@ -25,6 +27,12 @@ class OrchestratorDeps :
     diagnosis :DiagnosisEngine
     sandbox :PolicySandbox
     dispatch :Callable
+
+    # The IST wall clock the compliance gates read. Injected like everything else
+    # here so a test is not time-of-day dependent and a simulated scenario can ask
+    # what the engine would do at 21:40. A per-case override may still arrive on
+    # the state as ``now_ist``.
+    clock :Callable [[],datetime ]=field (default =now_ist )
 
 
 def build_recovery_graph (deps :OrchestratorDeps ,checkpointer =None ):

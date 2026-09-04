@@ -13,6 +13,7 @@ assistant_api ,
 health_api ,
 metrics_api ,
 policy_api ,
+simulation_api ,
 stream_api ,
 tracker_api ,
 transaction_api ,
@@ -26,7 +27,22 @@ async def lifespan (app :FastAPI ):
 
 
     init_db ()
+
+    # Simulation runs accumulate on every click, so old ones are dropped at
+    # startup rather than left to grow the database across a demo afternoon.
+    _prune_simulation_runs ()
     yield
+
+
+def _prune_simulation_runs ()->None :
+    from application .persistence import SessionLocal
+    from application .simulation import store
+
+    db =SessionLocal ()
+    try :
+        store .prune (db )
+    finally :
+        db .close ()
 
 
 app =FastAPI (
@@ -53,6 +69,7 @@ app .include_router (metrics_api .router ,prefix ="/api/v1")
 app .include_router (stream_api .router ,prefix ="/api/v1")
 app .include_router (transaction_api .router ,prefix ="/api/v1")
 app .include_router (policy_api .router ,prefix ="/api/v1")
+app .include_router (simulation_api .router ,prefix ="/api/v1")
 app .include_router (admin_api .router ,prefix ="/api/v1")
 app .include_router (assistant_api .router ,prefix ="/api/v1")
 app .include_router (tracker_api .router ,prefix ="/api/v1")

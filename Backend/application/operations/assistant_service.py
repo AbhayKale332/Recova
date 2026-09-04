@@ -554,9 +554,17 @@ context :dict |None =None ,generate =_UNSET )->dict :
 
 
 def _default_generate ()->GenerateFn |None :
-    try :
-        from application .operations .ai_client import build_generate
+    """The assistant runs on the strong tier - see ``settings.gemini_strong_model``.
 
-        return build_generate ()
+    It has to pick one intent out of a closed vocabulary and resolve a
+    transaction reference against a catalog injected into the prompt. Unlike
+    diagnosis or drafting, a weaker model here produces a wrong *action*, not
+    just clumsier wording. A failure to build the client still returns None, so
+    ``_fallback_parse`` keeps the assistant working offline.
+    """
+    try :
+        from application .operations .ai_client import build_strong_generate
+
+        return build_strong_generate ()
     except Exception :
         return None

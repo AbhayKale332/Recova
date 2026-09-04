@@ -26,9 +26,31 @@ def _recovered (t :TransactionState )->bool :
     return t .current_state ==TransactionLifecycleState .RECOVERED
 
 
-def compute_metrics (db :Session )->dict :
-    transactions =db .query (TransactionState ).all ()
-    audits =db .query (AuditTrail ).all ()
+def _simulation_run_of (t :TransactionState )->str |None :
+    return (t .metadata_json or {}).get ("simulation_run_id")
+
+
+def compute_metrics (db :Session ,*,simulation_run_id :str |None =None )->dict :
+    """Derive the dashboard figures from durable records.
+
+    ``simulation_run_id`` scopes the whole computation to one what-if run. With
+    no run id the real batch is measured and every simulated row is excluded, so
+    running a scenario never moves the merchant's actual numbers; with one, only
+    that run is measured. One function serves both readers so the two can never
+    drift apart.
+    """
+    all_transactions =db .query (TransactionState ).all ()
+    transactions =[
+    t for t in all_transactions if _simulation_run_of (t )==simulation_run_id
+    ]
+
+    scoped_ids ={t .transaction_id for t in transactions }
+    audits =[
+    a for a in db .query (AuditTrail ).all ()if a .transaction_id in scoped_ids
+    ]
+    escalations =[
+    e for e in db .query (EscalationQueue ).all ()if e .transaction_id in scoped_ids
+    ]
     at_risk =[t for t in transactions if _is_at_risk (t )]
 
     # Compute financial metrics from durable records so dashboard values remain auditable.
@@ -54,8 +76,8 @@ def compute_metrics (db :Session )->dict :
     "funnel":_funnel (at_risk ,audits ),
     "channel_breakdown":_channel_breakdown (transactions ,audits ),
     "time_series":_time_series (at_risk ),
-    "stopping_rules_by_name":_stopping_rules_by_name (audits ,db ),
-    "counts":_counts (transactions ,db ,audits ),
+    "stopping_rules_by_name":_stopping_rules_by_name (audits ,escalations ),
+    "counts":_counts (transactions ,escalations ,audits ),
     "avg_time_to_recovery_seconds":_avg_ttr (at_risk ),
     }
 
@@ -143,20 +165,26 @@ def _time_series (at_risk :list [TransactionState ])->list [dict ]:
     return series
 
 
-def _stopping_rules_by_name (audits :list [AuditTrail ],db :Session )->dict :
+def _stopping_rules_by_name (
+audits :list [AuditTrail ],escalations :list [EscalationQueue ]
+)->dict :
     counts :dict [str ,int ]=defaultdict (int )
     for a in audits :
         if isinstance (a .payload ,dict )and a .payload .get ("stopping_rule"):
             counts [a .payload ["stopping_rule"]]+=1
 
 
-    for e in db .query (EscalationQueue ).all ():
+    for e in escalations :
         if e .rule :
             counts [e .rule .value ]+=1
     return dict (counts )
 
 
-def _counts (transactions :list [TransactionState ],db :Session ,audits :list [AuditTrail ])->dict :
+def _counts (
+transactions :list [TransactionState ],
+escalations :list [EscalationQueue ],
+audits :list [AuditTrail ],
+)->dict :
     def _n (state :TransactionLifecycleState )->int :
         return sum (1 for t in transactions if t .current_state ==state )
 
@@ -166,7 +194,7 @@ def _counts (transactions :list [TransactionState ],db :Session ,audits :list [A
     return {
     "total":len (transactions ),
     "interventions":len (_intervention_audits (audits )),
-    "escalations":db .query (EscalationQueue ).count (),
+    "escalations":len (escalations ),
     "stopping_rules_fired":stopping ,
     "recovered":_n (TransactionLifecycleState .RECOVERED ),
     "cancelled":_n (TransactionLifecycleState .CANCELLED ),

@@ -4,15 +4,30 @@ Each test gets an isolated in-memory SQLite database via a ``get_db`` override,
 so tests never touch the real ``recovery_engine.db``.
 """
 
+from datetime import datetime
+
 import pytest
 from fastapi .testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy .orm import sessionmaker
 from sqlalchemy .pool import StaticPool
 
+from application .helpers import IST
 from application .persistence import Base ,get_db
 from application .server import app
 from application import entities as _models
+
+
+# A fixed weekday mid-morning in IST. Pinned so the TRAI quiet-hours gate is not
+# armed during the suite: a test asserting "policy blocks this discount" must not
+# start failing at 20:00 because the engine correctly deferred contact instead.
+# Tests that want the gate armed pass their own clock.
+BUSINESS_HOURS_IST =datetime (2026 ,3 ,4 ,11 ,0 ,tzinfo =IST )
+
+
+def fixed_clock (moment :datetime =BUSINESS_HOURS_IST ):
+    """A ``deps.clock`` that always reports ``moment``."""
+    return lambda :moment
 
 
 class _FakeDiagnosis :
@@ -63,6 +78,7 @@ def client (db_session ):
         diagnosis =_FakeDiagnosis (),
         sandbox =PolicySandbox .from_default_policy (),
         dispatch =build_dispatcher (db_session ,live_mode =False ),
+        clock =fixed_clock (),
         )
 
     from application .workflow .workflow_factory import get_orchestrator_deps

@@ -29,6 +29,7 @@ import type {
   TransactionRow,
 } from "@/lib/types";
 import type { Locale } from "@/lib/i18n/dictionaries/en";
+import type { SavedScenario, Scenario, ScenarioPreset } from "@/lib/simulation";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, "") ?? "http://localhost:8000";
@@ -155,6 +156,11 @@ export interface TransactionQuery {
   status?: LifecycleStatus | null;
   archetype?: string | null;
   q?: string | null;
+  /**
+   * Scopes the list to one what-if run. Omitted, the backend lists the real book
+   * and hides simulated rows — so the case list under a run must always pass it.
+   */
+  simulation_run_id?: string | null;
   limit?: number;
   offset?: number;
 }
@@ -272,7 +278,121 @@ export const api = {
   }) => post<AssistantReply>("/assistant/chat", body),
 
   seed: () => post<SeedResult>("/admin/seed"),
+
+  /* ── Simulation ──────────────────────────────────────────────────────── */
+
+  scenarios: (signal?: AbortSignal) =>
+    get<{ presets: ScenarioPreset[]; saved: SavedScenario[] }>(
+      "/simulate/scenarios",
+      undefined,
+      signal,
+    ),
+
+  saveScenario: (body: {
+    slug: string;
+    name: string;
+    description: string;
+    payload: Scenario;
+  }) => post<SavedScenario>("/simulate/scenarios", body),
+
+  deleteScenario: (slug: string) =>
+    request<{ slug: string; deleted: boolean }>(
+      "DELETE",
+      `/simulate/scenarios/${encodeURIComponent(slug)}`,
+    ),
+
+  simulationRuns: (signal?: AbortSignal) =>
+    get<{ runs: { run_id: string; cases: number; created_at: string }[] }>(
+      "/simulate/runs",
+      undefined,
+      signal,
+    ),
+
+  deleteSimulationRun: (runId: string) =>
+    request<{ run_id: string; deleted: number }>(
+      "DELETE",
+      `/simulate/runs/${encodeURIComponent(runId)}`,
+    ),
 };
+
+/**
+ * POST the scenario and read the SSE response.
+ *
+ * Not EventSource: that is GET-only, and a scenario is a nested object that has
+ * no business being squeezed into a query string. Reading the body stream
+ * directly also gives real abort support, which a long run needs.
+ */
+export async function* streamSimulation(
+  scenario: Scenario,
+  opts: { concurrency?: number; signal?: AbortSignal } = {},
+): AsyncGenerator<{ event: string; data: unknown }> {
+  const path = "/simulate/batch";
+  let response: Response;
+  try {
+    response = await fetch(`${ROOT}${path}`, {
+      method: "POST",
+      cache: "no-store",
+      signal: opts.signal,
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({ scenario, concurrency: opts.concurrency ?? 8 }),
+    });
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    throw new NetworkError(path, error);
+  }
+
+  if (!response.ok) {
+    throw new ApiError({
+      status: response.status,
+      path,
+      method: "POST",
+      detail: await readDetail(response),
+    });
+  }
+  if (!response.body) throw new NetworkError(path);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by a blank line; a partial frame stays buffered.
+      let split = buffer.indexOf("\n\n");
+      while (split !== -1) {
+        const frame = buffer.slice(0, split);
+        buffer = buffer.slice(split + 2);
+        const parsed = parseFrame(frame);
+        if (parsed) yield parsed;
+        split = buffer.indexOf("\n\n");
+      }
+    }
+  } finally {
+    // Abandoning a run mid-stream must not leave the connection open.
+    await reader.cancel().catch(() => {});
+  }
+}
+
+function parseFrame(frame: string): { event: string; data: unknown } | null {
+  let event = "message";
+  const dataLines: string[] = [];
+
+  for (const line of frame.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+  }
+  if (!dataLines.length) return null;
+
+  try {
+    return { event, data: JSON.parse(dataLines.join("\n")) };
+  } catch {
+    return null;
+  }
+}
 
 /** The SSE URL for a single case's live run. Consumed by useRecoveryRun. */
 export function runStreamUrl(id: string, locale: Locale): string {

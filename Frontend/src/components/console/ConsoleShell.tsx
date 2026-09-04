@@ -24,7 +24,10 @@ const DESTINATIONS = [
 export function ConsoleShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const pathname = usePathname();
-  const { metrics, refresh, isRefreshing, seed, seeding, unseeded } = useConsole();
+  const { run, seed, seeding } = useConsole();
+  // The top bar reports the run in progress, not a stored total — there is no
+  // standing figure to show until the user has run something.
+  const complete = run.complete;
 
   const isActive = (href: string, exact: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
@@ -45,23 +48,23 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
             <span className="text-[15px] font-semibold tracking-tight">{t.brand.name}</span>
           </Link>
 
-          {/* Running totals, so the money is on screen from every console route. */}
-          {metrics && !unseeded ? (
+          {/* The current run's totals, so the money stays on screen across routes. */}
+          {complete ? (
             <dl className="order-3 flex min-w-0 items-center gap-x-4 gap-y-1 overflow-x-auto text-[12px] sm:order-none">
               <div className="flex shrink-0 items-baseline gap-1.5">
-                <dt className="text-[var(--muted)]">{t.console.heroLabel}</dt>
+                <dt className="text-[var(--muted)]">{t.sim.measured}</dt>
                 <dd className="font-semibold text-[var(--recovered)]">
-                  <Money value={metrics.recovered_inr} compact />
+                  <Money value={complete.recovered_inr} compact />
                 </dd>
               </div>
               <div className="flex shrink-0 items-baseline gap-1.5">
                 <dt className="text-[var(--muted)]">{t.console.grrrShort}</dt>
-                <dd className="tabular font-semibold">{formatRatio(metrics.grrr)}</dd>
+                <dd className="tabular font-semibold">{formatRatio(complete.grrr)}</dd>
               </div>
               <div className="hidden shrink-0 items-baseline gap-1.5 lg:flex">
                 <dt className="text-[var(--muted)]">{t.console.atRisk}</dt>
                 <dd className="font-semibold">
-                  <Money value={metrics.at_risk_inr} compact />
+                  <Money value={complete.at_risk_inr} compact />
                 </dd>
               </div>
             </dl>
@@ -69,14 +72,6 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <LocaleToggle />
-            <button
-              type="button"
-              onClick={refresh}
-              disabled={isRefreshing}
-              className="rounded border border-[var(--border)] px-2 py-1 text-[12px] font-medium transition-colors duration-150 hover:border-neutral-400 disabled:opacity-60"
-            >
-              {isRefreshing ? t.actions.refreshing : t.actions.refresh}
-            </button>
             <button
               type="button"
               onClick={seed}

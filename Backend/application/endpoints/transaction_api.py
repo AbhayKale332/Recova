@@ -112,9 +112,17 @@ failure_class :int |None =Query (None ,ge =1 ,le =4 ),
 status_ :str |None =Query (None ,alias ="status"),
 archetype :str |None =None ,
 q :str |None =None ,
+simulation_run_id :str |None =None ,
 limit :int =Query (200 ,ge =1 ,le =500 ),
 offset :int =Query (0 ,ge =0 ),
 )->dict :
+    """List cases, newest first.
+
+    ``simulation_run_id`` scopes the list to one what-if run; without it the
+    real book is listed and simulated rows are hidden, which mirrors how
+    ``compute_metrics`` scopes the same rows. It filters in Python rather than
+    SQL because the run id is a ``metadata_json`` key, not a column.
+    """
     query =db .query (TransactionState )
     if failure_class is not None :
         query =query .filter (TransactionState .failure_class ==failure_class )
@@ -130,6 +138,12 @@ offset :int =Query (0 ,ge =0 ),
         rows =[t for t in rows if (t .metadata_json or {}).get ("archetype")!="HEALTHY"]
 
 
+
+    rows =[
+    t
+    for t in rows
+    if (t .metadata_json or {}).get ("simulation_run_id")==simulation_run_id
+    ]
 
     if archetype :
         rows =[t for t in rows if (t .metadata_json or {}).get ("archetype")==archetype ]

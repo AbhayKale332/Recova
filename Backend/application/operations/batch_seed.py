@@ -42,7 +42,7 @@ from application .operations .conversation_service import build_thread ,persona_
 from application .operations .diagnosis_service import Diagnosis ,_DEFAULT_PLAYBOOK
 from application .operations .language_parser import extract_p2p_date
 from application .operations .policy_guard import PolicySandbox
-from application .helpers import next_salary_window ,utcnow
+from application .helpers import IST ,next_salary_window ,utcnow
 
 # Seed profiles are deterministic so demos and tests can reproduce the same recovery outcomes.
 CaseOutcome =Literal [
@@ -197,6 +197,24 @@ class _OfflineDiagnosis :
         )
 
 
+# The seeded batch is a fixture, so it runs on a fixed mid-morning IST clock
+# rather than the wall clock. Otherwise seeding after 20:00 would push every case
+# into WAITING on the quiet-hours gate and the demo batch would look different
+# depending on the hour it was created. The cases that demonstrate quiet hours
+# are written deliberately by ``_seed_compliance_stops``.
+_SEED_CLOCK_IST =datetime (2026 ,3 ,4 ,11 ,0 ,tzinfo =IST )
+
+
+def offline_diagnosis_engine ()->_OfflineDiagnosis :
+    """The deterministic, model-free diagnosis engine the batch is seeded with.
+
+    Exposed for the same reason ``class_profile`` is: the simulator drives the
+    real graph but must not make one live model call per case, and it should
+    reach for this engine rather than keeping a third copy of the class defaults.
+    """
+    return _OfflineDiagnosis ()
+
+
 def _offline_deps (db )->OrchestratorDeps :
     from application .integrations .routing_dispatcher import build_dispatcher
 
@@ -205,6 +223,7 @@ def _offline_deps (db )->OrchestratorDeps :
     diagnosis =_OfflineDiagnosis (),
     sandbox =PolicySandbox .from_default_policy (),
     dispatch =build_dispatcher (db ,live_mode =False ),
+    clock =lambda :_SEED_CLOCK_IST ,
     )
 
 

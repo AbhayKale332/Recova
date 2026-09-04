@@ -38,6 +38,21 @@ class Settings (BaseSettings ):
     gemini_draft_model :str ="gemini-flash-lite-latest"
 
 
+    # The strong tier. Only the operator assistant uses it: that is the one call
+    # site doing strict structured extraction over the whole injected transaction
+    # catalog, so it is the only one where model quality changes the outcome
+    # rather than the phrasing. Diagnosis and drafting stay on the cheap tiers,
+    # because batch drafting dominates token spend.
+    gemini_strong_model :str ="gemini-3-pro"
+
+    # "gemini" | "openai". Switches the strong tier only; the cheap tiers stay on
+    # Gemini, where price and latency win for high-volume drafting. The OpenAI
+    # adapter is imported lazily, so the SDK stays an optional dependency.
+    llm_provider :str ="gemini"
+    openai_api_key :str =""
+    openai_model :str ="gpt-5"
+
+
 
 
     elevenlabs_api_key :str =""

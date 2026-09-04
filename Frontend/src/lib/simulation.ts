@@ -1,0 +1,319 @@
+/**
+ * Wire types and helpers for the what-if simulator.
+ *
+ * Mirrors backend/application/simulation/{scenario,probability,runner,trace}.py.
+ * The console's first screen is built on these: the user describes a book of
+ * failures, the backend runs it through the real recovery engine, and every
+ * figure on screen is the output of that run.
+ *
+ * Three money figures come back and they are **not** additive:
+ *   recovered_inr  measured — the engine drove these cases to RECOVERED
+ *   deferred_inr   at risk, held by a stopping rule that defers (quiet hours)
+ *   projected_inr  modelled — expected eventual recovery, with a band
+ * Never sum them, and never present the projection as money that moved.
+ */
+
+import type { LifecycleStatus, StoppingRule } from "@/lib/types";
+import type { Locale } from "@/lib/i18n/dictionaries/en";
+
+export type ReplyKind = "cooperative" | "opt_out" | "dispute" | "p2p" | "silent";
+
+export const REPLY_KINDS = [
+  "cooperative",
+  "p2p",
+  "silent",
+  "opt_out",
+  "dispute",
+] as const satisfies readonly ReplyKind[];
+
+export interface CustomCase {
+  customer_name: string;
+  amount_inr: number;
+  failure_class: number;
+  reply_text: string | null;
+  reply: ReplyKind | null;
+  retries_used: number;
+  voice_attempts: number;
+  days_overdue: number;
+  outcome_event: string | null;
+  playbook: string | null;
+}
+
+export interface SavedScenario {
+  slug: string;
+  name: string;
+  description: string;
+  payload: Scenario;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CaseShape {
+  count: number;
+  /** Relative weights over failure classes 1–4; normalised by the backend. */
+  class_mix: Record<string, number>;
+  amount_scale: number;
+  amount_spread: number;
+  amount_min_inr: number | null;
+  amount_max_inr: number | null;
+}
+
+export interface EdgeCases {
+  reply_mix: Partial<Record<ReplyKind, number>>;
+  reply_texts: Partial<Record<ReplyKind, string>>;
+  retries_already_used: number;
+  voice_attempts_used: number;
+  /** ISO string with an IST offset. Sets the wall clock the gates are read at. */
+  clock_ist: string | null;
+  late_settlement_pct: number;
+  cross_device_pct: number;
+  days_overdue: number;
+}
+
+export interface PolicyOverrides {
+  max_discount_pct: number | null;
+  max_intervention_amount_minor: number | null;
+  allowed_channels: string[] | null;
+  allowed_actions: string[] | null;
+}
+
+export interface Scenario {
+  name: string;
+  description: string;
+  cases: CaseShape;
+  edge_cases: EdgeCases;
+  policy: PolicyOverrides;
+  locale: Locale;
+  custom_cases: CustomCase[];
+  live_diagnosis: boolean;
+}
+
+export interface ScenarioPreset {
+  key: string;
+  name: string;
+  description: string;
+  scenario: Scenario;
+}
+
+/* ── Stream events (backend/application/simulation/runner.py) ───────────── */
+
+export interface SimStart {
+  run_id: string;
+  total: number;
+  at_risk_inr: number;
+  concurrency: number;
+  clock_ist: string;
+  scenario: string;
+  projected_inr: number;
+  projected_band: [number, number];
+}
+
+export interface SimProgress {
+  done: number;
+  total: number;
+  /** Cases per second, measured over the run so far. */
+  rate: number;
+  p50_ms: number;
+  p95_ms: number;
+  workers_busy: number;
+  peak_workers: number;
+  elapsed_s: number;
+}
+
+/** One feature's effect on a case's probability, in percentage points. */
+export interface Contribution {
+  feature: string;
+  detail: string;
+  delta_pp: number;
+}
+
+export interface SimCase {
+  transaction_id: string;
+  failure_class: number;
+  amount_inr: number;
+  customer_name: string;
+  final_state: LifecycleStatus;
+  stopped_by: StoppingRule | null;
+  p: number;
+  base_rate: number;
+  contributions: Contribution[];
+  elapsed_ms: number;
+}
+
+export interface Throughput {
+  elapsed_s: number;
+  cases_per_sec: number;
+  p50_ms: number;
+  p95_ms: number;
+  concurrency: number;
+  peak_workers: number;
+}
+
+export interface SimComplete {
+  run_id: string;
+  scenario: string;
+  /** Measured. */
+  recovered_inr: number;
+  at_risk_inr: number;
+  grrr: number;
+  /** Modelled. */
+  projected_inr: number;
+  projected_band: [number, number];
+  projected_cases: number;
+  /** Held by a deferring stopping rule — neither recovered nor lost. */
+  deferred_inr: number;
+  counts: {
+    total: number;
+    recovered: number;
+    escalated: number;
+    stopped: number;
+    waiting: number;
+    rules_fired: number;
+  };
+  stopping_rules_by_name: Record<string, number>;
+  by_class: Record<string, unknown>;
+  funnel: Record<string, number>;
+  throughput: Throughput;
+  /** Metrics-shaped and scoped to this run, so the existing zone-1 components read it directly. */
+  metrics: import("@/lib/types").Metrics;
+}
+
+/* ── Decision trace (backend/application/simulation/trace.py) ───────────── */
+
+export interface Budgets {
+  retries_used: number;
+  retries_cap: number;
+  voice_used: number;
+  voice_cap: number;
+  channels_used: string[];
+  dispatches: number;
+}
+
+export interface TraceStep {
+  step: number;
+  node: string;
+  decision: string;
+  reason: string;
+  rule: StoppingRule | null;
+  outcome: string;
+  at: string;
+  /** What the agent still had left when this step ran. */
+  allowed_at_this_moment: Budgets;
+}
+
+/* ── Defaults ──────────────────────────────────────────────────────────── */
+
+/**
+ * A neutral starting scenario, used before the presets have loaded and as the
+ * base for "Custom". Mid-morning IST so no gate is armed until the user arms one.
+ */
+export function defaultScenario(locale: Locale = "en"): Scenario {
+  return {
+    name: "Custom scenario",
+    description: "",
+    cases: {
+      count: 200,
+      class_mix: { "1": 1, "2": 1, "3": 1, "4": 1 },
+      amount_scale: 1,
+      amount_spread: 0.35,
+      amount_min_inr: null,
+      amount_max_inr: null,
+    },
+    edge_cases: {
+      reply_mix: { cooperative: 6, p2p: 2, silent: 1, opt_out: 1, dispute: 1 },
+      reply_texts: {},
+      retries_already_used: 0,
+      voice_attempts_used: 0,
+      clock_ist: null,
+      late_settlement_pct: 0,
+      cross_device_pct: 0,
+      days_overdue: 35,
+    },
+    policy: {
+      max_discount_pct: null,
+      max_intervention_amount_minor: null,
+      allowed_channels: null,
+      allowed_actions: null,
+    },
+    locale,
+    custom_cases: [],
+    live_diagnosis: false,
+  };
+}
+
+/** The IST hour a scenario's clock is set to, or null when it follows real time. */
+export function scenarioHour(scenario: Scenario): number | null {
+  const iso = scenario.edge_cases.clock_ist;
+  if (!iso) return null;
+  const match = /T(\d{2}):/.exec(iso);
+  return match ? Number(match[1]) : null;
+}
+
+/** Build an IST-offset ISO string for an hour of the scenario's reference day. */
+export function withScenarioHour(scenario: Scenario, hour: number): string {
+  const iso = scenario.edge_cases.clock_ist;
+  const day = iso ? iso.slice(0, 10) : "2026-03-04";
+  return `${day}T${String(hour).padStart(2, "0")}:00:00+05:30`;
+}
+
+/** TRAI quiet hours are 20:00–09:00 IST — mirrors lib/bounds.ts. */
+export function armsQuietHours(scenario: Scenario): boolean {
+  const hour = scenarioHour(scenario);
+  if (hour === null) return false;
+  return hour >= 20 || hour < 9;
+}
+
+/** Total weight in a mix, so a UI can render each entry as a share. */
+export function mixTotal(mix: Record<string, number>): number {
+  return Object.values(mix).reduce((sum, weight) => sum + (weight > 0 ? weight : 0), 0);
+}
+
+export function mixShare(mix: Record<string, number>, key: string): number {
+  const total = mixTotal(mix);
+  return total > 0 ? (mix[key] ?? 0) / total : 0;
+}
+
+
+const SCENARIO_SHARE_VERSION = 1;
+
+/** Encode a scenario as compact, versioned base64url for a shareable query string. */
+export function encodeScenario(scenario: Scenario): string {
+  const json = JSON.stringify({ v: SCENARIO_SHARE_VERSION, s: scenario });
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Decode a shareable scenario without allowing malformed query data to reach the form. */
+export function decodeScenario(encoded: string): Scenario | null {
+  try {
+    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (!parsed || typeof parsed !== "object" || !("v" in parsed) || !("s" in parsed)) return null;
+    const version = (parsed as { v: unknown }).v;
+    const scenario = (parsed as { s: unknown }).s;
+    if (version !== SCENARIO_SHARE_VERSION || !scenario || typeof scenario !== "object") return null;
+    if (!isScenarioShape(scenario)) return null;
+    return scenario;
+  } catch {
+    return null;
+  }
+}
+
+
+function isScenarioShape(value: object): value is Scenario {
+  const candidate = value as Partial<Scenario>;
+  return (
+    typeof candidate.name === "string" &&
+    typeof candidate.description === "string" &&
+    typeof candidate.locale === "string" &&
+    typeof candidate.live_diagnosis === "boolean" &&
+    Array.isArray(candidate.custom_cases) &&
+    Boolean(candidate.cases && candidate.edge_cases && candidate.policy)
+  );
+}
