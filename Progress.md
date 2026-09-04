@@ -87,9 +87,10 @@ tried first and Gemini is the transport fallback; both SDK imports stay lazy, an
 response carries a readable `RouteDecision`. Diagnosis, live drafting, and the assistant use
 `DIAGNOSE`, `DRAFT`, and `DECIDE` respectively; malformed/refused/low-confidence responses get
 one stronger retry. The pure `/api/v1/router/explain` endpoint and the case-panel chip make the
-choice visible without making a model call. Batch drafting remains template-only.
+choice visible without making a model call. Batch drafting passes `generate=None` explicitly, and
+the drafter sentinel keeps that path model-free while omitted `generate` continues to route live.
 
-Tests: 258 passing (was 251).
+Tests: 285 passing (was 258).
 
 ---
 
@@ -103,6 +104,11 @@ The router raises a call one tier when ₹25,000 or more is at stake because a h
 deserves more capable reasoning by default; making that an operator opt-in would leave the most
 expensive mistakes on the cheapest model. The threshold is a setting, and guardrail proximity can
 raise the tier again up to `full`.
+
+### 2026-09-05 — Agent tools are separate from intervention actions
+
+`AgentTool` is its own enum because `InterventionAction` is the closed set of things that reach a
+channel adapter; dispositions such as scheduling, human handoff, and stop are not dispatches.
 
 ### 2026-09-05 — Scenario percentages cannot rewrite authored cases
 A scenario percentage must never rewrite a case the operator wrote. Settlement quirks are apportioned across generated cases only, so authored outcomes remain their own event or probability draw.

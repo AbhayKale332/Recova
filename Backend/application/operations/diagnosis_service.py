@@ -60,8 +60,8 @@ class DiagnosisEngine :
     telemetry :dict [str ,Any ],
     user_message :str |None =None ,
     )->Diagnosis :
-        prompt =self ._build_prompt (failure_class ,telemetry ,user_message )
         self .last_route_decision =None
+        prompt =self ._build_prompt (failure_class ,telemetry ,user_message )
         # LLM output is advisory; invalid responses always fall back to the class-specific default.
         try :
             if self ._router is not None:

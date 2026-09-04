@@ -70,6 +70,22 @@ def test_explicit_none_keeps_batch_drafting_model_free (db_session ,monkeypatch 
     assert "Batch"in out
 
 
+def test_omitting_generate_still_builds_the_routed_generator (db_session ,monkeypatch ):
+    _txn (db_session ,name ="Live Customer")
+    captured ={}
+
+    def routed (prompt :str )->str :
+        captured ["prompt"] =prompt
+        return "routed reply"
+
+    monkeypatch.setattr (
+    "application.operations.message_drafter._default_generate",lambda amount :routed
+    )
+    out =draft_message (db_session ,"draft_1","ask for a payment date")
+    assert out =="routed reply"
+    assert "Live Customer"in captured ["prompt"]
+
+
 def _has_devanagari (s :str )->bool :
     return any ("ऀ"<=ch <="ॿ"for ch in s )
 

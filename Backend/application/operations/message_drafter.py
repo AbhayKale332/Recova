@@ -12,7 +12,7 @@ from application .entities import Message ,TransactionState
 logger =logging .getLogger (__name__ )
 
 GenerateFn =Callable [[str ],str ]
-_UNSET =object ()
+_ROUTED =object ()
 
 _CLASS_PROBLEM ={
 1 :"a real-time payment failure (a gateway/rail glitch on our side)",
@@ -57,7 +57,7 @@ db :Session ,
 transaction_id :str ,
 prompt :str ,
 *,
-generate :GenerateFn |None |object =_UNSET ,
+generate :GenerateFn |None |object =_ROUTED ,
 locale :str ="en",
 )->str :
     txn =(
@@ -82,7 +82,7 @@ locale :str ="en",
         full_prompt +="\nWrite the message in Hindi (Devanagari script)."
 
     # Convert paise to rupees once, at the router boundary.
-    if generate is _UNSET:
+    if generate is _ROUTED:
         gen =_default_generate (txn .amount_minor /100 )
     else:
         # ``None`` is an intentional offline instruction used by batch paths.
