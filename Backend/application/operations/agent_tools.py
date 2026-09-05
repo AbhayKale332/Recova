@@ -214,6 +214,16 @@ def _decide_prompt(
         deadline = meta.get("balance_deadline")
         if deadline:
             lines.append(f"That balance is due by {deadline}.")
+    allow_partial = bool(policy.get("allow_partial_payment", True))
+    min_partial_pct = int(policy.get("min_partial_payment_pct", 50))
+    min_partial_inr = (txn.amount_minor / 100) * (min_partial_pct / 100)
+    lines.append(f"Merchant policy partial payment allowed: {'YES' if allow_partial else 'NO'}.")
+    lines.append(f"Merchant policy minimum partial payment: {min_partial_pct}% (minimum ₹{min_partial_inr:,.2f}).")
+    lines.append(
+        "CRITICAL RULE ON PARTIAL PAYMENT: You MUST check merchant policy before agreeing to or generating a partial payment link. "
+        "If partial payments are NOT permitted by policy, or if the customer's proposed amount is below the minimum percentage, "
+        "do NOT propose a partial payment link or OFFER_PARTIAL_PLAN. Politely refuse and request full payment or HANDOFF_TO_HUMAN."
+    )
     if recent_messages:
         lines.append("Recent thread (oldest first):")
         lines.extend(f"- {entry}" for entry in recent_messages)
@@ -224,7 +234,7 @@ def _decide_prompt(
         '"deadline_days": number|null, "confidence": number}.'
     )
     lines.append(
-        '"partial_amount_inr" is the amount to request now with OFFER_PARTIAL_PLAN; '
+        '"partial_amount_inr" is the amount to request now if generating a partial payment link or OFFER_PARTIAL_PLAN; '
         '"deadline_days" is when the remaining balance falls due.'
     )
     lines.append("Never invent a tool, widen the policy, or treat a disposition as a channel dispatch.")
@@ -414,6 +424,8 @@ def gate_tool(
             channel=channel,
             discount_pct=discount_pct,
             amount_minor=amount_minor,
+            total_amount_minor=txn.amount_minor,
+            is_partial=(amount_minor < txn.amount_minor) or (proposed_tool == AgentTool.OFFER_PARTIAL_PLAN),
         )
     )
     if not policy_decision.approved:
@@ -586,7 +598,7 @@ def decide_tool(
     # The model proposes an amount and deadline; the code bounds them. Neither
     # field can widen what PolicySandbox.validate() will accept.
     request_amount_minor: int | None = None
-    raw_partial = payload.get("partial_amount_inr")
+    raw_partial = payload.get("partial_amount_inr") if payload.get("partial_amount_inr") is not None else payload.get("amount_inr")
     if isinstance(raw_partial, Real) and not isinstance(raw_partial, bool):
         clamped_inr = max(0.01, min(float(raw_partial), amount_inr))
         request_amount_minor = round(clamped_inr * 100)
@@ -596,6 +608,12 @@ def decide_tool(
     if isinstance(raw_deadline, Real) and not isinstance(raw_deadline, bool):
         deadline_days = max(1, min(int(raw_deadline), 90))
 
+    _PARTIAL_ALLOWED_TOOLS = {
+        AgentTool.OFFER_PARTIAL_PLAN,
+        AgentTool.GENERATE_PAYMENT_LINK,
+        AgentTool.GENERATE_QR_CODE,
+    }
+
     return gate_tool(
         db,
         txn,
@@ -604,7 +622,7 @@ def decide_tool(
         model_reason=model_reason,
         message=message,
         discount_pct=discount_pct,
-        request_amount_minor=request_amount_minor if proposed_tool == AgentTool.OFFER_PARTIAL_PLAN else None,
+        request_amount_minor=request_amount_minor if proposed_tool in _PARTIAL_ALLOWED_TOOLS else None,
         deadline_days=deadline_days,
         voice_attempts=attempts,
         now_ist=now_ist,

@@ -37,6 +37,8 @@ class ProposedAction :
     channel :InterventionChannel |str |None =None
     discount_pct :float |None =None
     amount_minor :int |None =None
+    total_amount_minor :int |None =None
+    is_partial :bool |None =None
 
     @property
     def action_value (self )->str :
@@ -59,6 +61,8 @@ class PolicySandbox :
     def __init__ (self ,policy :dict [str ,Any ]):
         self ._max_discount_pct =policy .get ("max_discount_pct",0 )
         self ._max_amount_minor =policy .get ("max_intervention_amount_minor")
+        self ._allow_partial_payment =bool (policy .get ("allow_partial_payment",True ))
+        self ._min_partial_payment_pct =int (policy .get ("min_partial_payment_pct",50 ))
         self ._allowed_channels =set (policy .get ("allowed_channels",[]))
         self ._allowed_actions =set (policy .get ("allowed_actions",[]))
 
@@ -74,6 +78,24 @@ class PolicySandbox :
 
         if action .channel_value is not None and action .channel_value not in self ._allowed_channels :
             return Decision (False ,f"Channel {action .channel_value !r } is not permitted by policy.")
+
+        # Partial payment check
+        is_partial =action .is_partial is True or action .action_value ==InterventionAction .OFFER_PARTIAL_PLAN .value or (
+        action .total_amount_minor is not None
+        and action .amount_minor is not None
+        and action .amount_minor <action .total_amount_minor
+        )
+        if is_partial :
+            if not self ._allow_partial_payment :
+                return Decision (False ,"Partial payment is not permitted by merchant policy.")
+            if action .total_amount_minor is not None and action .amount_minor is not None and action .total_amount_minor >0 :
+                base_minor = min(action .total_amount_minor, self ._max_amount_minor) if self ._max_amount_minor else action .total_amount_minor
+                pct =(action .amount_minor /base_minor )*100
+                if round (pct ,2 )<float (self ._min_partial_payment_pct ):
+                    return Decision (
+                    False ,
+                    f"Partial payment {pct :.0f}% is below the {self ._min_partial_payment_pct }% policy minimum.",
+                    )
 
         if action .discount_pct is not None and action .discount_pct >self ._max_discount_pct :
             return Decision (

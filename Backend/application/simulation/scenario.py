@@ -142,6 +142,8 @@ class PolicyOverrides (BaseModel ):
 
     max_discount_pct :float |None =Field (None ,ge =0 ,le =100 )
     max_intervention_amount_minor :int |None =Field (None ,ge =0 )
+    allow_partial_payment :bool |None =None
+    min_partial_payment_pct :int |None =Field (None ,ge =0 ,le =100 )
     allowed_channels :list [str ]|None =None
     allowed_actions :list [str ]|None =None
 

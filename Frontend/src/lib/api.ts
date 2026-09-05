@@ -261,6 +261,8 @@ export const api = {
   updatePolicy: (patch: {
     max_discount_pct?: number;
     max_intervention_amount_minor?: number;
+    allow_partial_payment?: boolean;
+    min_partial_payment_pct?: number;
     allowed_actions?: string[];
     allowed_channels?: string[];
   }) => request<PolicyResponse>("PATCH", "/policy", { body: patch }),

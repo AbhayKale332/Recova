@@ -30,18 +30,31 @@ def _defaults ()->dict :
 
 def _row (db :Session )->MerchantPolicy :
     row =db .get (MerchantPolicy ,1 )
+    d =_defaults ()
     if row is None :
-        d =_defaults ()
         row =MerchantPolicy (
         id =1 ,
         max_discount_pct =d ["max_discount_pct"],
         max_intervention_amount_minor =d ["max_intervention_amount_minor"],
+        allow_partial_payment =d.get ("allow_partial_payment", True ),
+        min_partial_payment_pct =d.get ("min_partial_payment_pct", 50 ),
         allowed_actions =d ["allowed_actions"],
         allowed_channels =d ["allowed_channels"],
         )
         db .add (row )
         db .commit ()
         db .refresh (row )
+    else:
+        updated = False
+        if getattr(row, "allow_partial_payment", None) is None:
+            row.allow_partial_payment = d.get("allow_partial_payment", True)
+            updated = True
+        if getattr(row, "min_partial_payment_pct", None) is None:
+            row.min_partial_payment_pct = d.get("min_partial_payment_pct", 50)
+            updated = True
+        if updated:
+            db.commit()
+            db.refresh(row)
     return row
 
 
@@ -87,6 +100,14 @@ def update_policy (db :Session ,patch :dict )->dict :
         if int (v )<0 :
             raise PolicyValidationError ("max_intervention_amount_minor must be >= 0.")
         row .max_intervention_amount_minor =int (v )
+
+    if (v :=patch .get ("allow_partial_payment"))is not None :
+        row .allow_partial_payment =bool (v )
+
+    if (v :=patch .get ("min_partial_payment_pct"))is not None :
+        if not (0 <=int (v )<=100 ):
+            raise PolicyValidationError ("min_partial_payment_pct must be between 0 and 100.")
+        row .min_partial_payment_pct =int (v )
 
     if (v :=patch .get ("allowed_actions"))is not None :
         unknown =set (v )-_ALLOWED_ACTIONS

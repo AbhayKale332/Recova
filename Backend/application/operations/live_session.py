@@ -346,10 +346,23 @@ class LiveSession:
             }.get(variant, PaymentArtifactKind.LINK)
 
         amount_minor = decision.request_amount_minor or txn.amount_minor
-        if decision.action == InterventionAction.OFFER_PARTIAL_PLAN:
+        is_partial = (amount_minor < txn.amount_minor) or (decision.action == InterventionAction.OFFER_PARTIAL_PLAN)
+
+        # Prior active artifacts will be closed inside payment_artifacts.mint
+        prior_active_ids = [
+            a.id
+            for a in db.query(PaymentArtifact)
+            .filter(
+                PaymentArtifact.transaction_id == txn.transaction_id,
+                PaymentArtifact.status == PaymentArtifactStatus.CREATED,
+            )
+            .all()
+        ]
+
+        if is_partial:
             deadline_days = decision.deadline_days or settings.partial_plan_default_days
             deadline = self.clock() + timedelta(days=deadline_days)
-            return payment_artifacts.mint(
+            artifact = payment_artifacts.mint(
                 db,
                 txn,
                 kind,
@@ -358,7 +371,13 @@ class LiveSession:
                 first_min_partial_minor=amount_minor,
                 deadline=deadline,
             )
-        return payment_artifacts.mint(db, txn, kind, amount_minor=amount_minor)
+        else:
+            artifact = payment_artifacts.mint(db, txn, kind, amount_minor=amount_minor)
+
+        for old_id in prior_active_ids:
+            self.emit("artifact_closed", {"id": old_id})
+
+        return artifact
 
     def _apply_agent_decision(
         self,
@@ -662,6 +681,8 @@ class LiveSession:
             request_amount_minor = round(float(args["first_payment_inr"]) * 100)
         elif args.get("amount_inr") is not None:
             request_amount_minor = round(float(args["amount_inr"]) * 100)
+        elif args.get("partial_amount_inr") is not None:
+            request_amount_minor = round(float(args["partial_amount_inr"]) * 100)
 
         deadline_days = args.get("deadline_days")
         deadline_days = int(deadline_days) if deadline_days is not None else None

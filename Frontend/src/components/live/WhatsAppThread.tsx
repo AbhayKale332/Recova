@@ -196,7 +196,9 @@ function ArtifactCard({
   // what actually hides the button once it's been used; it does not read
   // back the live artifact status after that point.
   const [simState, setSimState] = useState<"idle" | "pending" | "done" | "error">("idle");
+  const isClosed = artifact.status === "closed" || artifact.status === "expired";
   const canSimulate =
+    !isClosed &&
     (artifact.status === "created" || artifact.status === "partially_paid") &&
     simState !== "done";
 
@@ -237,7 +239,11 @@ function ArtifactCard({
         </p>
       )}
 
-      {showLink ? (
+      {isClosed ? (
+        <p className="rounded-full bg-neutral-200 px-3 py-1.5 text-center text-[12px] font-medium text-neutral-500 line-through">
+          {t.sim.linkReplaced}
+        </p>
+      ) : showLink ? (
         <a
           href={artifact.url!}
           target="_blank"
@@ -250,7 +256,7 @@ function ArtifactCard({
         <p className="text-center text-[11px] text-[var(--muted)]">{t.live.qrUnavailable}</p>
       ) : null}
 
-      {artifact.detail === "simulated" ? (
+      {artifact.detail === "simulated" && !isClosed ? (
         <p className="text-center text-[10px] text-[var(--muted)]">{t.live.artifactSimulated}</p>
       ) : null}
 

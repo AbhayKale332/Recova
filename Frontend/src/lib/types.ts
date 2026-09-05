@@ -88,6 +88,7 @@ export interface Conversation { messages: ConversationMessage[]; call: CallData 
 export interface PolicyResponse {
   policy: {
     max_discount_pct: number; max_intervention_amount_minor: number;
+    allow_partial_payment: boolean; min_partial_payment_pct: number;
     allowed_channels: string[]; allowed_actions: string[];
   };
   money_moving_actions: string[];
@@ -185,7 +186,7 @@ export const PAYMENT_ARTIFACT_KINDS = ["LINK", "UPI_LINK", "QR"] as const;
 export type PaymentArtifactKind = (typeof PAYMENT_ARTIFACT_KINDS)[number];
 
 export const PAYMENT_ARTIFACT_STATUSES = [
-  "created", "paid", "partially_paid", "expired",
+  "created", "paid", "partially_paid", "expired", "closed",
 ] as const;
 export type PaymentArtifactStatus = (typeof PAYMENT_ARTIFACT_STATUSES)[number];
 

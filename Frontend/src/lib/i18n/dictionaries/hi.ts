@@ -251,6 +251,11 @@ export const hi: Dictionary = {
 
     maxDiscount: "अधिकतम छूट",
     maxDiscountHint: "इस सीमा से ऊपर की कार्रवाई भेजी नहीं जाती, इंसान को सौंपी जाती है।",
+    allowPartialPayment: "आंशिक भुगतान की अनुमति",
+    allowPartialPaymentHint: "यदि अक्षम है, तो एजेंट किसी भी आंशिक भुगतान अनुरोध को अस्वीकार करेगा।",
+    minPartialPaymentPct: "न्यूनतम आंशिक भुगतान %",
+    minPartialPaymentPctHint: "ग्राहक को आंशिक भुगतान में कुल राशि का न्यूनतम कितना प्रतिशत देना होगा।",
+    linkReplaced: "भुगतान लिंक बदल दिया गया",
     allowedChannels: "अनुमत चैनल",
     policyDefault: "मर्चेंट डिफ़ॉल्ट",
 

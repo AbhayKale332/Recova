@@ -131,7 +131,42 @@ def mint(
         detail = "simulated"
         provider_id = f"sim_{txn.transaction_id[-6:]}"
         url = None if kind == PaymentArtifactKind.QR else f"https://rzp.io/i/{txn.transaction_id[-6:]}"
-        image_url = None
+    # Graciously close and deactivate prior active payment links for this case
+    prior_active = (
+        db.query(PaymentArtifact)
+        .filter(
+            PaymentArtifact.transaction_id == txn.transaction_id,
+            PaymentArtifact.status == PaymentArtifactStatus.CREATED,
+        )
+        .all()
+    )
+    for old_art in prior_active:
+        if old_art.provider_id and not old_art.simulated and settings.razorpay_key_id and settings.razorpay_key_secret:
+            try:
+                import razorpay
+                rzp_client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
+                rzp_client.payment_link.cancel(old_art.provider_id)
+            except Exception as exc:
+                logger.warning("Could not cancel previous Razorpay link %s: %s", old_art.provider_id, exc)
+        old_art.status = PaymentArtifactStatus.CLOSED
+
+    # Update previous message records carrying this artifact so the thread reflects its closure
+    closed_ids = {a.id for a in prior_active}
+    if closed_ids:
+        from application.entities import Message
+        messages = (
+            db.query(Message)
+            .filter(Message.transaction_id == txn.transaction_id)
+            .all()
+        )
+        for msg in messages:
+            if msg.meta_json and isinstance(msg.meta_json, dict):
+                art_data = msg.meta_json.get("payment_artifact")
+                if isinstance(art_data, dict) and art_data.get("id") in closed_ids:
+                    msg_meta = dict(msg.meta_json)
+                    msg_meta["payment_artifact"] = dict(art_data)
+                    msg_meta["payment_artifact"]["status"] = PaymentArtifactStatus.CLOSED.value
+                    msg.meta_json = msg_meta
 
     artifact = PaymentArtifact(
         transaction_id=txn.transaction_id,

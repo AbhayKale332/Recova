@@ -63,3 +63,16 @@ def init_db ()->None :
     import application .entities
 
     Base .metadata .create_all (bind =engine )
+
+    if settings .database_url .startswith ("sqlite"):
+        with engine .connect ()as conn :
+            try :
+                res =conn .exec_driver_sql ("PRAGMA table_info(merchant_policy)").fetchall ()
+                cols ={row [1 ]for row in res }
+                if cols and "allow_partial_payment"not in cols :
+                    conn .exec_driver_sql ("ALTER TABLE merchant_policy ADD COLUMN allow_partial_payment BOOLEAN DEFAULT 1")
+                if cols and "min_partial_payment_pct"not in cols :
+                    conn .exec_driver_sql ("ALTER TABLE merchant_policy ADD COLUMN min_partial_payment_pct INTEGER DEFAULT 50")
+                conn .commit ()
+            except Exception :
+                pass

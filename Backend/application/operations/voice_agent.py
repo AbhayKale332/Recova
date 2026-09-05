@@ -48,12 +48,18 @@ def build_assistant(
 
     # Guardrails from bounds and policy
     max_discount_pct = 0
+    allow_partial = True
+    min_partial_pct = 50
     if db is not None:
         try:
             policy = policy_repository.get_policy(db)
             max_discount_pct = int(policy.get("max_discount_pct", 0))
+            allow_partial = bool(policy.get("allow_partial_payment", True))
+            min_partial_pct = int(policy.get("min_partial_payment_pct", 50))
         except Exception:
             max_discount_pct = 0
+            allow_partial = True
+            min_partial_pct = 50
 
     voice_used = 0
     voice_cap = 2
@@ -68,6 +74,20 @@ def build_assistant(
         voice_status = f"{voice_remaining} voice attempts remain"
 
     guardrail_note = f"you may not offer more than {max_discount_pct}%; {voice_status}"
+    min_partial_amount = amount_inr * (min_partial_pct / 100)
+    if allow_partial:
+        partial_info = f"Partial payments: ALLOWED (minimum {min_partial_pct}% of total amount, which is ₹{min_partial_amount:,.2f})."
+        partial_rule = (
+            f"- Check merchant policy before discussing any partial payment: partial payments are permitted but MUST be at least "
+            f"{min_partial_pct}% (₹{min_partial_amount:,.2f}). If customer asks to pay less, politely refuse and ask for at least {min_partial_pct}%. "
+            f"Only if they offer at least {min_partial_pct}% may you agree to generate a partial payment link."
+        )
+    else:
+        partial_info = "Partial payments: NOT ALLOWED by merchant policy."
+        partial_rule = (
+            "- Check merchant policy before discussing any partial payment: partial payments are NOT permitted by policy. "
+            "If customer asks to pay partially, politely refuse and insist on full payment."
+        )
 
     lang_instruction = "Hindi / Hinglish" if locale == "hi" else "English"
     system_prompt = speakable(
@@ -79,7 +99,9 @@ def build_assistant(
         f"- Primary Language: {lang_instruction}\n\n"
         f"Live Guardrail State:\n"
         f"- {guardrail_note}\n"
+        f"- {partial_info}\n"
         f"- You may NOT offer a discount higher than {max_discount_pct}%.\n"
+        f"{partial_rule}\n"
         f"- Respect customer disputes or opt-outs ('stop', 'band karo') immediately by acknowledging and ending gracefully.\n\n"
         f"Speech: this is a live phone call, not text. Always say any amount aloud in words "
         f"(for example 'five thousand rupees'), never as digits or a currency symbol - a listener cannot "
@@ -93,6 +115,25 @@ def build_assistant(
     # This name is a transient, per-call label only, never looked up again,
     # so truncation collisions carry no correctness risk.
     name = f"recova-{txn.transaction_id}"[:40]
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_payment_link",
+                "description": "Generate a payment link for the customer for full or permitted partial payment.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "amount_inr": {
+                            "type": "number",
+                            "description": "The amount in INR for the payment link.",
+                        }
+                    },
+                },
+            },
+        }
+    ]
 
     return {
         "name": name,
@@ -108,6 +149,7 @@ def build_assistant(
             "messages": [
                 {"role": "system", "content": system_prompt}
             ],
+            "tools": tools,
         },
         "firstMessage": first_message,
         "maxDurationSeconds": 180,

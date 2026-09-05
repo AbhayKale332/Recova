@@ -400,6 +400,46 @@ export function ScenarioForm({
             })}
           </div>
         </Field>
+
+        <Field label={t.sim.allowPartialPayment} hint={t.sim.allowPartialPaymentHint}>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-[12px]">
+              <input
+                type="checkbox"
+                checked={scenario.policy.allow_partial_payment !== false}
+                disabled={disabled}
+                onChange={(event) =>
+                  setPolicy({ allow_partial_payment: event.target.checked ? null : false })
+                }
+              />
+              {scenario.policy.allow_partial_payment !== false ? t.sim.policyDefault + " (Yes)" : "No"}
+            </label>
+          </div>
+        </Field>
+
+        <Field label={t.sim.minPartialPaymentPct} hint={t.sim.minPartialPaymentPctHint}>
+          <div className="flex items-center gap-2">
+            <NumberInput
+              value={scenario.policy.min_partial_payment_pct ?? 50}
+              min={1}
+              max={100}
+              suffix="%"
+              disabled={disabled || scenario.policy.min_partial_payment_pct === null}
+              onChange={(min_partial_payment_pct) => setPolicy({ min_partial_payment_pct })}
+            />
+            <label className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--muted)]">
+              <input
+                type="checkbox"
+                checked={scenario.policy.min_partial_payment_pct === null}
+                disabled={disabled}
+                onChange={(event) =>
+                  setPolicy({ min_partial_payment_pct: event.target.checked ? null : 50 })
+                }
+              />
+              {t.sim.policyDefault}
+            </label>
+          </div>
+        </Field>
       </Group>
 
       <p className="tabular text-[12px] text-[var(--muted)]">

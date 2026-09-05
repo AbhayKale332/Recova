@@ -261,6 +261,11 @@ export const en = {
 
     maxDiscount: "Max discount",
     maxDiscountHint: "An action above this cap is handed to a human instead of sent.",
+    allowPartialPayment: "Allow partial payment",
+    allowPartialPaymentHint: "If disabled, the agent will refuse any partial payment request and ask for full payment.",
+    minPartialPaymentPct: "Min partial payment %",
+    minPartialPaymentPctHint: "The minimum percentage of the total amount the customer must pay in a partial payment.",
+    linkReplaced: "Payment link replaced",
     allowedChannels: "Allowed channels",
     policyDefault: "Merchant default",
 

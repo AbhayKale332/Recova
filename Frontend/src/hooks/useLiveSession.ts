@@ -237,6 +237,31 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
       push({ kind: "artifact", at: Date.now(), data });
     });
 
+    source.addEventListener("artifact_closed", (e) => {
+      const data = parse<{ id: number }>((e as MessageEvent<string>).data);
+      if (!data?.id) return;
+      setMessages((prev) =>
+        prev.map((msg) => {
+          const art = msg.meta &&
+            typeof msg.meta === "object" &&
+            (msg.meta as Record<string, unknown>).payment_artifact;
+          if (art && typeof art === "object" && (art as Record<string, unknown>).id === data.id) {
+            return {
+              ...msg,
+              meta: {
+                ...(msg.meta as Record<string, unknown>),
+                payment_artifact: {
+                  ...(art as Record<string, unknown>),
+                  status: "closed",
+                },
+              },
+            } as ConversationMessage;
+          }
+          return msg;
+        })
+      );
+    });
+
     source.addEventListener("call_offer", (e) => {
       const data = parse<LiveCallOffer>((e as MessageEvent<string>).data);
       if (!data) return;

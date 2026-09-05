@@ -77,6 +77,8 @@ export interface EdgeCases {
 export interface PolicyOverrides {
   max_discount_pct: number | null;
   max_intervention_amount_minor: number | null;
+  allow_partial_payment: boolean | null;
+  min_partial_payment_pct: number | null;
   allowed_channels: string[] | null;
   allowed_actions: string[] | null;
 }
@@ -355,6 +357,8 @@ export function defaultScenario(locale: Locale = "en"): Scenario {
     policy: {
       max_discount_pct: null,
       max_intervention_amount_minor: null,
+      allow_partial_payment: null,
+      min_partial_payment_pct: null,
       allowed_channels: null,
       allowed_actions: null,
     },

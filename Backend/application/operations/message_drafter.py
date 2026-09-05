@@ -68,12 +68,29 @@ locale :str ="en",
     if txn is None :
         raise ValueError (f"Unknown transaction: {transaction_id !r }")
 
+    from application.operations import policy_repository
+
+    policy = policy_repository.get_policy(db)
+    allow_partial = bool(policy.get("allow_partial_payment", True))
+    min_partial_pct = int(policy.get("min_partial_payment_pct", 50))
+    amount_inr = float(txn.amount_minor) / 100
+    min_partial_inr = amount_inr * (min_partial_pct / 100)
+
     name ,problem ,summary =_context (db ,txn )
     full_prompt =(
     "You are a polite payment-recovery agent messaging a customer on WhatsApp.\n"
     f"Customer: {name }\n"
     f"Situation: {problem }.\n"
     f"Conversation so far:\n{summary }\n\n"
+    f"Merchant Policy & Guardrails:\n"
+    f"- Total amount due: ₹{amount_inr:,.2f}\n"
+    f"- Partial payments permitted: {'YES' if allow_partial else 'NO'}\n"
+    f"- Minimum partial payment allowed: {min_partial_pct}% (₹{min_partial_inr:,.2f})\n"
+    f"- Maximum discount cap: {policy.get('max_discount_pct', 0)}%\n\n"
+    f"CRITICAL RULES (CHECK PERMISSIONS BEFORE SAYING ANYTHING):\n"
+    f"1. You MUST check the merchant policy above before agreeing to, proposing, or discussing any partial payment or installment.\n"
+    f"2. If partial payments permitted is NO: Politely refuse any partial payment request, state that policy requires the full payment of ₹{amount_inr:,.2f}, and ask for full payment. Never agree to a partial payment.\n"
+    f"3. If partial payments permitted is YES: Any partial payment MUST be at least {min_partial_pct}% of total amount (₹{min_partial_inr:,.2f}). If the customer offers less, refuse the lower amount, explain that policy requires at least {min_partial_pct}% (₹{min_partial_inr:,.2f}), and ask if they can pay ₹{min_partial_inr:,.2f}. Only if the customer offers at least {min_partial_pct}% may you agree to generate a partial payment link.\n\n"
     f"Operator instruction: {prompt }\n\n"
     "Write ONE short, warm, professional WhatsApp message (max 2 sentences). "
     "No preamble, no quotes — just the message text."
