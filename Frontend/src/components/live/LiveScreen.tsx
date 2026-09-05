@@ -41,6 +41,14 @@ export function LiveScreen() {
     if (session.error) toast.failure(t.states.errorTitle, session.error);
   }, [session.error, toast, t]);
 
+  // A pay-date commitment (or a booked partial plan) writes a calendar
+  // reminder on the backend; echo the confirmation here.
+  useEffect(() => {
+    if (session.reminder) {
+      toast.success(session.reminder.message, `${session.reminder.label} · ${session.reminder.date}`);
+    }
+  }, [session.reminder, toast]);
+
   const exit = async () => {
     setExiting(true);
     await session.exit();

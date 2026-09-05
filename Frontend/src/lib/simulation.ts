@@ -213,6 +213,25 @@ export interface LiveDecision {
   request_amount_minor: number | null;
   /** Set only by `OFFER_PARTIAL_PLAN`: how many days until the booked balance is due. */
   deadline_days: number | null;
+  /** Advisory score (0–1) from the demo repayment model, fed into the DECIDE
+   * prompt. Null when the model was not consulted for this turn. */
+  repayment_probability: number | null;
+  /** "high" | "medium" | "low" — the band that goes with `repayment_probability`. */
+  repayment_band: string | null;
+}
+
+/**
+ * `reminder` — emitted when the customer commits to a pay date in the live
+ * chat, or the agent books a partial-payment plan. The backend has written the
+ * date onto the case (so the calendar picks it up on its next load); the
+ * client shows `message` as a toast.
+ */
+export interface LiveReminder {
+  date: string;
+  kind: "promise_to_pay" | "partial_payment";
+  label: string;
+  amount_inr: number;
+  message: string;
 }
 
 export interface LiveCallOffer {

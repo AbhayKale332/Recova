@@ -29,8 +29,6 @@ export function ConsoleScreen() {
   const {
     scenario,
     setScenario,
-    presets,
-    applyPreset,
     savedScenarios,
     applySavedScenario,
     saveScenario,
@@ -125,9 +123,7 @@ export function ConsoleScreen() {
 
         <ScenarioForm
           scenario={scenario}
-          presets={presets}
           onChange={setScenario}
-          onPreset={applyPreset}
           savedScenarios={savedScenarios}
           onSavedScenario={applySavedScenario}
           onSaveScenario={saveScenario}

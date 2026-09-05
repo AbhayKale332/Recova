@@ -59,6 +59,13 @@ export function DecisionCard({ decision }: { decision: LiveDecision | null }) {
         <p className="text-[12px] text-[var(--muted)]">{decision.model_reason}</p>
       ) : null}
 
+      {decision.repayment_probability != null ? (
+        <RepaymentOdds
+          probability={decision.repayment_probability}
+          band={decision.repayment_band}
+        />
+      ) : null}
+
       {decision.discount_pct != null ? (
         <p className="tabular text-[12px]">
           {fillTemplate(t.live.discountLabel, { pct: decision.discount_pct })}
@@ -72,6 +79,39 @@ export function DecisionCard({ decision }: { decision: LiveDecision | null }) {
       ) : null}
 
       {rule ? <p className="text-[12px] font-medium text-[var(--stopped)]">{rule}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * The demo repayment model's estimate for this customer. This exact number is
+ * put into the DECIDE prompt, so the model reasons over it — the bar shows the
+ * operator what the agent saw.
+ */
+function RepaymentOdds({ probability, band }: { probability: number; band: string | null }) {
+  const pct = Math.round(probability * 100);
+  const color =
+    band === "high"
+      ? "var(--recovered, #16a34a)"
+      : band === "low"
+        ? "var(--lost, #dc2626)"
+        : "var(--stopped, #d97706)";
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between text-[11px] text-[var(--muted)]">
+        <span className="tracking-wide uppercase">Repayment probability</span>
+        <span className="tabular font-semibold text-[var(--accent-ink)]">
+          {pct}%{band ? ` · ${band}` : ""}
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--border)]">
+        <div
+          className="h-full rounded-full transition-[width]"
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+      <p className="text-[11px] text-[var(--muted)]">Demo model · advisory input to the decision</p>
     </div>
   );
 }

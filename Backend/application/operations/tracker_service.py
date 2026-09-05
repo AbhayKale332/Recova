@@ -89,6 +89,19 @@ def list_subscriptions (db :Session )->list [dict ]:
     .filter (TransactionState .failure_class ==int (FailureClass .SUBSCRIPTION_MANDATE ))
     .all ()
     )
+    seen ={t .id for t in rows }
+    # Cases that picked up a calendar reminder in a live session - a customer
+    # committing to a pay date, or a booked partial plan - surface here too,
+    # whatever their failure class.
+    reminders =(
+    db .query (TransactionState )
+    .filter (TransactionState .metadata_json .isnot (None ))
+    .all ()
+    )
+    rows +=[
+    t for t in reminders
+    if t .id not in seen and (t .metadata_json or {}).get ("calendar_reminder")
+    ]
     views =[_subscription_view (t ,today )for t in rows ]
     views .sort (key =lambda v :v ["next_debit_date"])
     return views

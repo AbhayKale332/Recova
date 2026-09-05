@@ -12,7 +12,7 @@ import { FAILURE_CLASSES } from "@/lib/failure-classes";
 import { Field, NumberInput } from "@/components/sim/FormPrimitives";
 import type { CustomCase } from "@/lib/simulation";
 
-const EMPTY_CASE = (number: number): CustomCase => ({
+export const EMPTY_CASE = (number: number): CustomCase => ({
   customer_name: `Customer ${number}`,
   amount_inr: 5000,
   failure_class: 1,

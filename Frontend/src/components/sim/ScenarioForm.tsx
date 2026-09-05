@@ -3,7 +3,8 @@
 import { useState } from "react";
 
 import { ClassChip } from "@/components/ClassChip";
-import { CaseBuilder } from "@/components/sim/CaseBuilder";
+import { CaseBuilder, EMPTY_CASE } from "@/components/sim/CaseBuilder";
+import { SampleGallery } from "@/components/sim/SampleGallery";
 import { Field, Group, NumberInput } from "@/components/sim/FormPrimitives";
 import { fillTemplate, useI18n } from "@/lib/i18n";
 import { formatCount } from "@/lib/format";
@@ -16,7 +17,6 @@ import {
   type ReplyKind,
   type Scenario,
   type SavedScenario,
-  type ScenarioPreset,
   encodeScenario,
 } from "@/lib/simulation";
 
@@ -30,9 +30,7 @@ import {
  */
 export function ScenarioForm({
   scenario,
-  presets,
   onChange,
-  onPreset,
   savedScenarios = [],
   onSavedScenario,
   onSaveScenario,
@@ -40,9 +38,7 @@ export function ScenarioForm({
   disabled,
 }: {
   scenario: Scenario;
-  presets: ScenarioPreset[];
   onChange: (next: Scenario) => void;
-  onPreset: (preset: ScenarioPreset) => void;
   savedScenarios?: SavedScenario[];
   onSavedScenario?: (saved: SavedScenario) => void;
   onSaveScenario?: () => void;
@@ -74,33 +70,11 @@ export function ScenarioForm({
 
   return (
     <div className="flex flex-col gap-4">
-      {presets.length ? (
-        <fieldset className="flex flex-col gap-2">
-          <legend className="text-[12px] font-medium tracking-wide text-[var(--muted)] uppercase">
-            {t.sim.presets}
-          </legend>
-          <div className="flex flex-wrap gap-2">
-            {presets.map((preset) => (
-              <button
-                key={preset.key}
-                type="button"
-                disabled={disabled}
-                onClick={() => onPreset(preset)}
-                title={preset.description}
-                aria-pressed={scenario.name === preset.name}
-                className={`rounded-md border px-2.5 py-1.5 text-left text-[12px] font-medium transition-colors duration-150 disabled:opacity-50 ${
-                  scenario.name === preset.name
-                    ? "border-[var(--accent)] bg-[var(--accent-wash)] text-[var(--accent-ink)]"
-                    : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--accent)]"
-                }`}
-              >
-                {preset.name}
-              </button>
-            ))}
-          </div>
-          <p className="text-[11px] text-[var(--muted)]">{t.sim.presetsHint}</p>
-        </fieldset>
-      ) : null}
+      <SampleGallery
+        onPick={(built) => setCustomCases([...scenario.custom_cases, built])}
+        onCustom={() => setCustomCases([...scenario.custom_cases, EMPTY_CASE(scenario.custom_cases.length + 1)])}
+        disabled={disabled}
+      />
 
       <Group title={t.sim.groupCustom} defaultOpen>
         <CaseBuilder cases={scenario.custom_cases} onChange={setCustomCases} disabled={disabled} />
@@ -179,6 +153,98 @@ export function ScenarioForm({
             </div>
           ) : null}
         </div>
+      </Group>
+
+      <Group title={t.sim.groupPolicy} defaultOpen>
+        <Field label={t.sim.maxDiscount} hint={t.sim.maxDiscountHint}>
+          <div className="flex items-center gap-2">
+            <NumberInput
+              value={scenario.policy.max_discount_pct ?? 0}
+              min={0}
+              max={100}
+              suffix="%"
+              disabled={disabled || scenario.policy.max_discount_pct === null}
+              onChange={(max_discount_pct) => setPolicy({ max_discount_pct })}
+            />
+            <label className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--muted)]">
+              <input
+                type="checkbox"
+                checked={scenario.policy.max_discount_pct === null}
+                disabled={disabled}
+                onChange={(event) =>
+                  setPolicy({ max_discount_pct: event.target.checked ? null : 0 })
+                }
+              />
+              {t.sim.policyDefault}
+            </label>
+          </div>
+        </Field>
+
+        <Field label={t.sim.allowedChannels} hint="">
+          <div className="flex flex-wrap gap-2">
+            {(["WHATSAPP", "VOICE", "PAYMENT_LINK"] as const).map((channel) => {
+              const current = scenario.policy.allowed_channels;
+              const on = current === null || current.includes(channel);
+              return (
+                <label key={channel} className="flex items-center gap-1.5 text-[12px]">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={disabled}
+                    onChange={() => {
+                      const base = current ?? ["WHATSAPP", "VOICE", "PAYMENT_LINK"];
+                      const next = on
+                        ? base.filter((c) => c !== channel)
+                        : [...base, channel];
+                      setPolicy({ allowed_channels: next });
+                    }}
+                  />
+                  {channel.replace("_", " ").toLowerCase()}
+                </label>
+              );
+            })}
+          </div>
+        </Field>
+
+        <Field label={t.sim.allowPartialPayment} hint={t.sim.allowPartialPaymentHint}>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-[12px]">
+              <input
+                type="checkbox"
+                checked={scenario.policy.allow_partial_payment !== false}
+                disabled={disabled}
+                onChange={(event) =>
+                  setPolicy({ allow_partial_payment: event.target.checked ? null : false })
+                }
+              />
+              {scenario.policy.allow_partial_payment !== false ? t.sim.policyDefault + " (Yes)" : "No"}
+            </label>
+          </div>
+        </Field>
+
+        <Field label={t.sim.minPartialPaymentPct} hint={t.sim.minPartialPaymentPctHint}>
+          <div className="flex items-center gap-2">
+            <NumberInput
+              value={scenario.policy.min_partial_payment_pct ?? 50}
+              min={1}
+              max={100}
+              suffix="%"
+              disabled={disabled || scenario.policy.min_partial_payment_pct === null}
+              onChange={(min_partial_payment_pct) => setPolicy({ min_partial_payment_pct })}
+            />
+            <label className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--muted)]">
+              <input
+                type="checkbox"
+                checked={scenario.policy.min_partial_payment_pct === null}
+                disabled={disabled}
+                onChange={(event) =>
+                  setPolicy({ min_partial_payment_pct: event.target.checked ? null : 50 })
+                }
+              />
+              {t.sim.policyDefault}
+            </label>
+          </div>
+        </Field>
       </Group>
 
       <Group title={t.sim.groupCases}>
@@ -347,98 +413,6 @@ export function ScenarioForm({
             disabled={disabled}
             onChange={(days_overdue) => setEdges({ days_overdue })}
           />
-        </Field>
-      </Group>
-
-      <Group title={t.sim.groupPolicy}>
-        <Field label={t.sim.maxDiscount} hint={t.sim.maxDiscountHint}>
-          <div className="flex items-center gap-2">
-            <NumberInput
-              value={scenario.policy.max_discount_pct ?? 0}
-              min={0}
-              max={100}
-              suffix="%"
-              disabled={disabled || scenario.policy.max_discount_pct === null}
-              onChange={(max_discount_pct) => setPolicy({ max_discount_pct })}
-            />
-            <label className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--muted)]">
-              <input
-                type="checkbox"
-                checked={scenario.policy.max_discount_pct === null}
-                disabled={disabled}
-                onChange={(event) =>
-                  setPolicy({ max_discount_pct: event.target.checked ? null : 0 })
-                }
-              />
-              {t.sim.policyDefault}
-            </label>
-          </div>
-        </Field>
-
-        <Field label={t.sim.allowedChannels} hint="">
-          <div className="flex flex-wrap gap-2">
-            {(["WHATSAPP", "VOICE", "PAYMENT_LINK"] as const).map((channel) => {
-              const current = scenario.policy.allowed_channels;
-              const on = current === null || current.includes(channel);
-              return (
-                <label key={channel} className="flex items-center gap-1.5 text-[12px]">
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    disabled={disabled}
-                    onChange={() => {
-                      const base = current ?? ["WHATSAPP", "VOICE", "PAYMENT_LINK"];
-                      const next = on
-                        ? base.filter((c) => c !== channel)
-                        : [...base, channel];
-                      setPolicy({ allowed_channels: next });
-                    }}
-                  />
-                  {channel.replace("_", " ").toLowerCase()}
-                </label>
-              );
-            })}
-          </div>
-        </Field>
-
-        <Field label={t.sim.allowPartialPayment} hint={t.sim.allowPartialPaymentHint}>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-[12px]">
-              <input
-                type="checkbox"
-                checked={scenario.policy.allow_partial_payment !== false}
-                disabled={disabled}
-                onChange={(event) =>
-                  setPolicy({ allow_partial_payment: event.target.checked ? null : false })
-                }
-              />
-              {scenario.policy.allow_partial_payment !== false ? t.sim.policyDefault + " (Yes)" : "No"}
-            </label>
-          </div>
-        </Field>
-
-        <Field label={t.sim.minPartialPaymentPct} hint={t.sim.minPartialPaymentPctHint}>
-          <div className="flex items-center gap-2">
-            <NumberInput
-              value={scenario.policy.min_partial_payment_pct ?? 50}
-              min={1}
-              max={100}
-              suffix="%"
-              disabled={disabled || scenario.policy.min_partial_payment_pct === null}
-              onChange={(min_partial_payment_pct) => setPolicy({ min_partial_payment_pct })}
-            />
-            <label className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--muted)]">
-              <input
-                type="checkbox"
-                checked={scenario.policy.min_partial_payment_pct === null}
-                disabled={disabled}
-                onChange={(event) =>
-                  setPolicy({ min_partial_payment_pct: event.target.checked ? null : 50 })
-                }
-              />
-              {t.sim.policyDefault}
-            </label>
-          </div>
         </Field>
       </Group>
 

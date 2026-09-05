@@ -52,6 +52,7 @@ from application.operations.agent_tools import AgentDecision, AgentTool, decide_
 from application.operations.audit_service import record_audit
 from application.operations.compliance_rules import is_within_quiet_hours, screen_user_message
 from application.operations.batch_seed import class_profile
+from application.operations.language_parser import extract_p2p_date
 from application.operations.message_drafter import draft_message
 from application.operations.model_router import ProviderUnavailable, RouteDecision, RoutedResult, explain_route
 from application.operations.policy_repository import get_policy
@@ -618,6 +619,55 @@ class LiveSession:
         route = route or explain_route("CONVERSE", amount_inr=txn.amount_minor / 100, live=True)
         return body, route
 
+    def _maybe_add_reminder(self, db: Session, customer_text: str, decision: AgentDecision) -> None:
+        """When the customer commits to a pay date, or the agent books a partial
+        plan, record a calendar reminder on the case and tell the client so it
+        can surface "Reminder added to calendar" and show it on the calendar."""
+        clock = self.clock()
+        is_partial = (
+            decision.action == InterventionAction.OFFER_PARTIAL_PLAN
+            or decision.tool == AgentTool.OFFER_PARTIAL_PLAN
+        )
+        p2p = extract_p2p_date(customer_text, clock.date())
+
+        if is_partial:
+            days = decision.deadline_days or settings.partial_plan_default_days
+            when = (clock.date() + timedelta(days=days)).isoformat()
+            kind = "partial_payment"
+        elif p2p:
+            when = p2p
+            kind = "promise_to_pay"
+        else:
+            return
+
+        txn = self._txn(db)
+        meta = dict(txn.metadata_json or {})
+        if meta.get("calendar_reminder", {}).get("date") == when:
+            return  # already booked for this date
+
+        amount_inr = round(txn.amount_minor / 100, 2)
+        name = meta.get("customer_name") or "Customer"
+        label = (
+            "Partial payment balance due"
+            if kind == "partial_payment"
+            else f"{name} promised to pay"
+        )
+        reminder = {"date": when, "kind": kind, "label": label, "amount_inr": amount_inr}
+        meta["calendar_reminder"] = reminder
+        meta["next_debit_date"] = when
+        txn.metadata_json = meta
+        db.commit()
+
+        record_audit(
+            db,
+            transaction_id=self.transaction_id,
+            node_name=NodeName.INGEST,
+            action_type=ActionType.STATE_TRANSITION,
+            payload={"calendar_reminder": reminder, "live_session_id": self.session_id},
+            outcome=Outcome.SUCCESS,
+        )
+        self.emit("reminder", {**reminder, "message": "Reminder added to calendar"})
+
     def reply(self, db: Session, text: str) -> dict[str, Any]:
         self.start(db)
         if self.closed or self.terminal:
@@ -648,6 +698,7 @@ class LiveSession:
         self._route(decision.route_decision)
         self.emit("decision", decision.as_dict())
         self._apply_agent_decision(db, decision, body)
+        self._maybe_add_reminder(db, text, decision)
         txn = self._txn(db)
         if not self.terminal:
             self.emit("bounds", _bounds(db, txn, clock=self.clock))

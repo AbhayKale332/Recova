@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime
 from enum import Enum
 from numbers import Real
@@ -53,6 +53,7 @@ from application.operations.model_router import (
     router,
 )
 from application.operations.policy_guard import PolicySandbox, ProposedAction
+from application.operations.repayment_model import predict_for_case
 from application.operations.voice_attempts import voice_attempt_count
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,11 @@ class AgentDecision:
     scheduled_for: str | None = None
     request_amount_minor: int | None = None
     deadline_days: int | None = None
+    # Advisory score from the demo repayment model (operations/repayment_model).
+    # It informs the DECIDE prompt and is surfaced on the live theatre; it never
+    # gates a tool.
+    repayment_probability: float | None = None
+    repayment_band: str | None = None
 
     @property
     def state(self) -> TransactionLifecycleState | None:
@@ -190,6 +196,7 @@ def _decide_prompt(
     policy: dict[str, Any],
     voice_attempts: int,
     recent_messages: list[str] | None = None,
+    repayment: Any | None = None,
 ) -> str:
     offered = ", ".join(tool.value for tool in AgentTool)
     meta = getattr(txn, "metadata_json", None) or {}
@@ -201,6 +208,20 @@ def _decide_prompt(
         f"Voice attempts already used: {voice_attempts} of {VOICE_ATTEMPT_CAP}.",
         f"The merchant policy discount cap is {policy['max_discount_pct']}%.",
     ]
+    if repayment is not None:
+        top = ", ".join(
+            f"{name} ({'+' if delta >= 0 else ''}{delta:.2f})"
+            for name, delta in repayment.contributions[:3]
+        )
+        lines.append(
+            f"A demo repayment model estimates this customer's probability of paying at "
+            f"{repayment.probability:.0%} ({repayment.band} confidence band). "
+            f"Largest drivers (log-odds): {top}. "
+            f"Treat this as advisory: a low probability favours a cheaper, lower-effort tool "
+            f"(WhatsApp nudge, payment link) or HANDOFF_TO_HUMAN over spending a voice attempt "
+            f"or a discount; a high probability supports a direct payment ask. It never "
+            f"overrides merchant policy or a guardrail."
+        )
     ceiling_minor = policy.get("max_intervention_amount_minor")
     if ceiling_minor is not None:
         lines.append(
@@ -540,7 +561,27 @@ def decide_tool(
         recent = recent + [f"customer: {customer_text}"]
     if agent_draft:
         recent = recent + [f"agent (drafted): {agent_draft}"]
-    prompt = _decide_prompt(txn, fc, policy=policy, voice_attempts=attempts, recent_messages=recent)
+
+    clock = now_ist or _now_ist()
+    meta = getattr(txn, "metadata_json", None) or {}
+    days_overdue = int(meta.get("days_overdue") or 0)
+    if not days_overdue and txn.created_at is not None:
+        try:
+            days_overdue = max(0, (clock.date() - txn.created_at.date()).days)
+        except (TypeError, ValueError):
+            days_overdue = 0
+    repayment = predict_for_case(
+        failure_class=int(fc),
+        amount_inr=amount_inr,
+        days_overdue=days_overdue,
+        retries_used=int(txn.retry_count),
+        prior_repayments=int(meta.get("prior_repayments") or 0),
+        in_quiet_hours=is_within_quiet_hours(clock),
+    )
+
+    prompt = _decide_prompt(
+        txn, fc, policy=policy, voice_attempts=attempts, recent_messages=recent, repayment=repayment
+    )
     route_discount = proposed_discount_pct if proposed_discount_pct is not None else discount_pct
     route_kwargs = {
         "amount_inr": amount_inr,
@@ -614,7 +655,7 @@ def decide_tool(
         AgentTool.GENERATE_QR_CODE,
     }
 
-    return gate_tool(
+    decision = gate_tool(
         db,
         txn,
         proposed_tool,
@@ -627,6 +668,11 @@ def decide_tool(
         voice_attempts=attempts,
         now_ist=now_ist,
         sandbox=sandbox,
+    )
+    return replace(
+        decision,
+        repayment_probability=repayment.probability,
+        repayment_band=repayment.band,
     )
 
 

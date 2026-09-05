@@ -11,6 +11,7 @@ import type {
   LiveDecision,
   LiveDiagnosis,
   LiveDispatchEvent,
+  LiveReminder,
   LiveStart,
   LiveStep,
   RouteDecision,
@@ -45,6 +46,7 @@ export type LiveTurnEvent =
   | { kind: "decision"; at: number; data: LiveDecision }
   | { kind: "message"; at: number; data: ConversationMessage }
   | { kind: "dispatch"; at: number; data: LiveDispatchEvent }
+  | { kind: "reminder"; at: number; data: LiveReminder }
   | { kind: "artifact"; at: number; data: PaymentArtifact }
   | { kind: "call_offer"; at: number; data: LiveCallOffer }
   | { kind: "status"; at: number; data: { final_state: LifecycleStatus } }
@@ -69,6 +71,8 @@ export interface LiveSessionState {
   typing: "agent" | "customer" | null;
   messages: ConversationMessage[];
   dispatch: LiveDispatchEvent | null;
+  /** The most recent calendar reminder booked from the conversation, or null. */
+  reminder: LiveReminder | null;
   /** The most recently minted payment artifact — the same object each
    * carrying message's `meta.payment_artifact` points at, kept here too so
    * the agent column (BoundsGauge's balance line) can read it without
@@ -119,6 +123,7 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
   const [typing, setTyping] = useState<"agent" | "customer" | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [dispatch, setDispatch] = useState<LiveDispatchEvent | null>(null);
+  const [reminder, setReminder] = useState<LiveReminder | null>(null);
   const [artifact, setArtifact] = useState<PaymentArtifact | null>(null);
   const [callOffer, setCallOffer] = useState<LiveCallOffer | null>(null);
   const [bounds, setBounds] = useState<Bounds | null>(null);
@@ -144,6 +149,7 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
     setTyping(null);
     setMessages([]);
     setDispatch(null);
+    setReminder(null);
     setArtifact(null);
     setCallOffer(null);
     setBounds(null);
@@ -228,6 +234,13 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
       if (!data) return;
       setDispatch(data);
       push({ kind: "dispatch", at: Date.now(), data });
+    });
+
+    source.addEventListener("reminder", (e) => {
+      const data = parse<LiveReminder>((e as MessageEvent<string>).data);
+      if (!data) return;
+      setReminder(data);
+      push({ kind: "reminder", at: Date.now(), data });
     });
 
     source.addEventListener("artifact", (e) => {
@@ -349,6 +362,7 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
     typing,
     messages,
     dispatch,
+    reminder,
     artifact,
     callOffer,
     bounds,

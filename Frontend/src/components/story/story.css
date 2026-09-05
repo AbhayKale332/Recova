@@ -1,0 +1,75 @@
+/*
+ * Story-page-only styling — the human "why" half of the pitch.
+ * Blue accent, white ground. Scoped under `.theme-story` so none of it touches
+ * the console, which keeps its own neutral + teal theme (globals.css).
+ */
+
+.theme-story {
+  --color-fg: #16213e;
+  --color-muted: #5b6472;
+  --color-clay: #1a56db; /* main accent — blue */
+  --color-clay-soft: #e5edff;
+  --color-paper: #ffffff;
+
+  background: var(--color-paper);
+  color: var(--color-fg);
+}
+
+.theme-story .text-muted {
+  color: var(--color-muted);
+}
+.theme-story .text-fg {
+  color: var(--color-fg);
+}
+
+.story-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--color-clay);
+}
+
+.story-display {
+  font-family:
+    "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia,
+    ui-serif, serif;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.08;
+  color: var(--color-fg);
+  text-wrap: balance;
+}
+
+/* Hand-drawn speech cloud with a little tail. */
+.speech-cloud {
+  position: relative;
+  background: #ffffff;
+  border: 1.5px solid #dfe6f5;
+  border-radius: 1.4rem;
+  box-shadow: 0 14px 36px -16px rgba(20, 40, 90, 0.28);
+}
+.speech-cloud::after {
+  content: "";
+  position: absolute;
+  left: 2.2rem;
+  bottom: -0.7rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  background: #ffffff;
+  border-right: 1.5px solid #dfe6f5;
+  border-bottom: 1.5px solid #dfe6f5;
+  transform: rotate(45deg);
+}
+
+/* Soft blob behind the doodle. */
+.doodle-blob {
+  background: radial-gradient(
+    circle at 50% 45%,
+    var(--color-clay-soft) 0%,
+    rgba(229, 237, 255, 0.4) 45%,
+    transparent 70%
+  );
+  filter: blur(2px);
+}

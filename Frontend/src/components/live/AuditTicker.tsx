@@ -55,6 +55,8 @@ function describe(event: LiveTurnEvent): string {
       return `${humanizeEnum(event.data.sender)}: "${truncate(event.data.body)}"`;
     case "dispatch":
       return `Dispatched via ${humanizeEnum(event.data.channel)}${event.data.simulated ? " (simulated)" : ""}`;
+    case "reminder":
+      return `Reminder added to calendar · ${event.data.label} (${event.data.date})`;
     case "artifact":
       return `${humanizeEnum(event.data.kind)} minted · ${event.data.detail}`;
     case "call_offer":
