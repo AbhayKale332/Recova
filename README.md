@@ -28,7 +28,7 @@ An AI agent that **detects** revenue at risk, **diagnoses** why it failed, runs 
 
 | | | |
 |---|---|---|
-| [The one sentence](#-the-one-sentence) | [The problem](#-the-problem-track-03) | [The story](#-the-story-meena--shashank) |
+| [The core idea](#-the-core-idea) | [The problem](#-the-problem-track-03) | [The story](#-the-story-meena--shashank) |
 | [What makes Recova different](#-what-makes-recova-different) | [The four failure classes](#-the-four-failure-classes) | [Architecture](#-architecture) |
 | [The recovery decision graph](#-the-recovery-decision-graph) | [Guardrails & stopping rules](#-guardrails--stopping-rules-the-spine) | [The model-free boundary](#-the-model-free-boundary) |
 | [The cost-aware LLM router](#-the-cost-aware-llm-router) | [The simulation engine](#-the-simulation-engine-the-console-produces-money-it-doesnt-report-it) | [The projection model](#-the-projection-model-measured--projected--deferred) |
@@ -39,11 +39,15 @@ An AI agent that **detects** revenue at risk, **diagnoses** why it failed, runs 
 
 ---
 
-## 🎯 The one sentence
+## 🎯 The core idea
 
-> *"Recova recovered **₹4.2L of ₹9.8L** at risk across **214 cases** — 12 escalated to a human, 31 stopped by policy."*
+Every run ends in one generated, plain-language line of the form:
 
-That generated sentence is the whole submission. Everything in the product exists to make it **falsifiable**: you supply a scenario, press Run, and *watch* the money get recovered by the same code that would run in production. No stored number, no hardcoded demo total.
+> *Recova recovered **‹measured ₹›** of **‹at-risk ₹›** across **‹N›** cases — **‹e›** escalated to a human, **‹s›** stopped by policy.*
+
+Every value in it is computed from that run — the money is what the engine actually drove to `RECOVERED`, the counts come from the audit trail. **Nothing is stored or hardcoded.** You supply a scenario, press Run, and N cases stream through the same LangGraph engine that would run in production; the number you see is the number the code produced, and you can change the inputs and watch it move.
+
+That is the whole point: *money recovered*, demonstrated live and falsifiable — not *revenue risk identified*.
 
 ---
 
