@@ -16,6 +16,7 @@ import type {
   InvoiceItem,
   LifecycleStatus,
   Metrics,
+  PaymentArtifact,
   PaymentLinkResult,
   PaymentLinkStatus,
   PolicyResponse,
@@ -359,6 +360,14 @@ export const api = {
     request<{ session_id: string; deleted: boolean }>(
       "DELETE",
       `/live/sessions/${encodeURIComponent(id)}`,
+    ),
+
+  /** Demo-only: force a minted artifact straight to paid, bypassing Razorpay
+   * entirely — the same end state a real reconciled payment reaches, so the
+   * thread announces it identically. See live_session.simulate_payment. */
+  simulatePaymentArtifact: (sessionId: string, artifactId: number) =>
+    post<PaymentArtifact>(
+      `/live/sessions/${encodeURIComponent(sessionId)}/artifacts/${artifactId}/simulate-pay`,
     ),
 };
 

@@ -133,7 +133,8 @@ export type Channel = (typeof CHANNELS)[number];
 
 export const ACTIONS = [
   "SEND_WHATSAPP", "VOICE_CALL", "OFFER_FEE_WAIVER",
-  "GENERATE_PAYMENT_LINK", "RETRY_CHARGE", "CANCEL_SUBSCRIPTION",
+  "GENERATE_PAYMENT_LINK", "GENERATE_QR_CODE", "OFFER_PARTIAL_PLAN",
+  "RETRY_CHARGE", "CANCEL_SUBSCRIPTION",
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
@@ -177,6 +178,37 @@ export interface PaymentLinkResult {
 
 export interface PaymentLinkStatus {
   paid: boolean; status: string; current_state: LifecycleStatus;
+}
+
+/** Wire shape of `PaymentArtifact.as_dict()` (application/entities/payment_artifact.py). */
+export const PAYMENT_ARTIFACT_KINDS = ["LINK", "UPI_LINK", "QR"] as const;
+export type PaymentArtifactKind = (typeof PAYMENT_ARTIFACT_KINDS)[number];
+
+export const PAYMENT_ARTIFACT_STATUSES = [
+  "created", "paid", "partially_paid", "expired",
+] as const;
+export type PaymentArtifactStatus = (typeof PAYMENT_ARTIFACT_STATUSES)[number];
+
+export interface PaymentArtifact {
+  id: number;
+  transaction_id: string;
+  kind: PaymentArtifactKind;
+  provider_id: string | null;
+  /** short_url for a link; null for a QR. */
+  url: string | null;
+  /** QR image; null for a link. */
+  image_url: string | null;
+  /** What this artifact asks for now, in paise. */
+  amount_minor: number;
+  accept_partial: boolean;
+  first_min_partial_minor: number | null;
+  deadline: string | null;
+  status: PaymentArtifactStatus;
+  amount_paid_minor: number;
+  /** True when Razorpay never actually minted this — no MCP, no SDK keys. */
+  simulated: boolean;
+  detail: "mcp" | "sdk" | "simulated";
+  created_at: string;
 }
 
 export interface PolicyVerdict { approved: boolean; reason: string; }

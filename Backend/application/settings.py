@@ -29,12 +29,26 @@ class Settings (BaseSettings ):
     razorpay_webhook_secret :str =""
     # Opt into the server-side Razorpay MCP dispatch transport explicitly.
     razorpay_mcp_enabled :bool =False
+    # Local Docker stdio is the default; hosted Streamable HTTP remains available as a fallback.
+    razorpay_mcp_transport :str ="stdio"
+    razorpay_mcp_docker_image :str ="razorpay-mcp-server:latest"
+    razorpay_mcp_docker_command :str ="docker"
     # Official hosted Razorpay MCP endpoint; Streamable HTTP is preferred.
     razorpay_mcp_url :str ="https://mcp.razorpay.com/mcp"
     # Keep the remote transport restricted to test keys unless an operator explicitly overrides it.
     razorpay_mcp_allow_live_keys :bool =False
     # Hard wall-clock limit for one MCP connection/call attempt.
     razorpay_mcp_timeout_s :float =5.0
+
+    # A partial-plan's balance deadline, absent an explicit deadline_days from
+    # the model. The sweeper (Part 5) reads this too.
+    partial_plan_default_days :int =14
+
+    # How often a live session polls Razorpay for a minted artifact's payment
+    # status. There is no webhook reachable from localhost in the demo, so
+    # this poll is what notices a completed checkout and reflects it back
+    # into the WhatsApp thread.
+    payment_poll_seconds :float =4.0
 
 
 

@@ -11,7 +11,7 @@ from application.entities import TransactionState
 from application.integrations import razorpay_mcp
 from application.integrations import payment_actions
 from application.integrations.payment_actions import RazorpayActionsAdapter
-from application.operations import agent_tools, payment_link_service
+from application.operations import agent_tools, payment_artifacts, payment_link_service
 from application.operations.live_session import get_session
 
 
@@ -33,6 +33,12 @@ def test_connect_time_tool_assertion_requires_the_complete_allowlist():
     advertised = [SimpleNamespace(name=name) for name in razorpay_mcp.RAZORPAY_MCP_ALLOWLIST]
     razorpay_mcp.assert_allowlisted_tools(advertised)
 
+    advertised_with_server_alias = [
+        SimpleNamespace(name=razorpay_mcp._MCP_TOOL_ALIASES.get(name, name))
+        for name in razorpay_mcp.RAZORPAY_MCP_ALLOWLIST
+    ]
+    razorpay_mcp.assert_allowlisted_tools(advertised_with_server_alias)
+
     missing = advertised[:-1]
     with pytest.raises(AssertionError):
         razorpay_mcp.assert_allowlisted_tools(missing)
@@ -51,6 +57,134 @@ def test_mcp_call_timeout_collapses_to_the_same_failure_signal():
 def test_official_basic_auth_header_is_derived_in_memory():
     expected = base64.b64encode(b"rzp_test_example:secret").decode("ascii")
     assert razorpay_mcp._authorization_header("rzp_test_example", "secret") == f"Basic {expected}"
+
+
+def test_result_data_reads_mcp_camelcase_fields():
+    assert razorpay_mcp._result_data(
+        SimpleNamespace(isError=True, structuredContent={"ignored": True}, content=[])
+    ) is None
+    assert razorpay_mcp._result_data(
+        SimpleNamespace(isError=False, structuredContent={"id": "plink_123"}, content=[])
+    ) == {"id": "plink_123"}
+
+
+def test_stdio_connect_passes_docker_and_razorpay_credentials(monkeypatch):
+    import mcp
+    import mcp.client.stdio
+
+    seen = {}
+
+    class _FakeTransport:
+        async def __aenter__(self):
+            return "read", "write"
+
+        async def __aexit__(self, *_args):
+            return None
+
+    def fake_parameters(**kwargs):
+        seen["parameters"] = kwargs
+        return SimpleNamespace(**kwargs)
+
+    def fake_stdio_client(parameters):
+        seen["server"] = parameters
+        return _FakeTransport()
+
+    class _FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def initialize(self):
+            return None
+
+        async def list_tools(self):
+            return SimpleNamespace(
+                tools=[SimpleNamespace(name=name) for name in razorpay_mcp.RAZORPAY_MCP_ALLOWLIST]
+            )
+
+    monkeypatch.setattr(mcp, "StdioServerParameters", fake_parameters)
+    monkeypatch.setattr(mcp.client.stdio, "stdio_client", fake_stdio_client)
+    client = razorpay_mcp.RazorpayMCPClient(
+        transport="stdio",
+        key_id="rzp_test_example",
+        key_secret="secret",
+        docker_image="razorpay-mcp-server:test",
+        docker_command="docker-test",
+        session_factory=lambda _read, _write: _FakeSession(),
+    )
+
+    asyncio.run(client._connect_async())
+
+    assert seen["parameters"] == {
+        "command": "docker-test",
+        "args": [
+            "run",
+            "--rm",
+            "-i",
+            "-e",
+            "RAZORPAY_KEY_ID",
+            "-e",
+            "RAZORPAY_KEY_SECRET",
+            "razorpay-mcp-server:test",
+        ],
+        "env": {"RAZORPAY_KEY_ID": "rzp_test_example", "RAZORPAY_KEY_SECRET": "secret"},
+    }
+    assert client._session is not None
+
+
+def test_explicit_payment_methods_map_to_private_tools(monkeypatch):
+    calls = []
+    client = razorpay_mcp.RazorpayMCPClient()
+    monkeypatch.setattr(
+        client,
+        "call_tool",
+        lambda name, arguments: calls.append((name, arguments)) or {"ok": True},
+    )
+
+    client.create_link(
+        amount_minor=100,
+        contact="+919999999999",
+        notes={"transaction_id": "txn_1"},
+        accept_partial=True,
+        first_min_partial_minor=25,
+        expire_by=123,
+        upi=True,
+    )
+    client.create_qr(amount_minor=100, description="Recovery", close_by=456)
+    client.fetch_qr_code("qr_123")
+
+    assert calls == [
+        (
+            "create_payment_link_upi",
+            {
+                "amount": 100,
+                "currency": "INR",
+                "description": "Payment recovery",
+                "notify_sms": False,
+                "notify_email": False,
+                "reminder_enable": False,
+                "accept_partial": True,
+                "customer_contact": "+919999999999",
+                "notes": {"transaction_id": "txn_1"},
+                "first_min_partial_amount": 25,
+                "expire_by": 123,
+            },
+        ),
+        (
+            "create_qr_code",
+            {
+                "type": "upi_qr",
+                "usage": "single_use",
+                "fixed_amount": True,
+                "payment_amount": 100,
+                "description": "Recovery",
+                "close_by": 456,
+            },
+        ),
+        ("fetch_qr_code", {"qr_code_id": "qr_123"}),
+    ]
 
 
 def test_live_key_guard_requires_explicit_override(monkeypatch):
@@ -139,8 +273,12 @@ def test_disabled_mcp_keeps_existing_simulated_dispatch(monkeypatch):
 
 def test_live_payment_decision_exposes_the_final_dispatch_detail(client, monkeypatch):
     _enable_test_mcp(monkeypatch)
-    mcp = _FakeMCP({"id": "plink_MCP"})
-    monkeypatch.setattr(payment_actions, "default_client", lambda: mcp)
+
+    class _FakeArtifactMCP:
+        def create_link(self, **_kwargs):
+            return {"id": "plink_MCP", "short_url": "https://rzp.io/i/mcp"}
+
+    monkeypatch.setattr(payment_artifacts, "default_client", lambda: _FakeArtifactMCP())
     created = client.post(
         "/api/v1/live/sessions",
         json={"custom_case": {"customer_name": "Asha Rao", "amount_inr": 4000, "failure_class": 1}},

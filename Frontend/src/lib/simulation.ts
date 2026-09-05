@@ -205,12 +205,32 @@ export interface LiveDecision {
   discount_pct: number | null;
   requested_tool: string | null;
   scheduled_for: string | null;
+  /** The amount actually being requested by this turn's tool, in paise — the
+   * case's full amount for most tools, the first payment for a partial plan.
+   * Null when the decision named no payment tool (e.g. a WhatsApp nudge). */
+  request_amount_minor: number | null;
+  /** Set only by `OFFER_PARTIAL_PLAN`: how many days until the booked balance is due. */
+  deadline_days: number | null;
 }
 
 export interface LiveCallOffer {
   assistant: unknown;
   public_key: string | null;
   call_session_id: number | null;
+}
+
+/**
+ * `dispatch` — the non-payment-card half of a channel dispatch (WhatsApp,
+ * voice, fee waiver). A payment action's card comes from the richer
+ * `artifact` event instead (`PaymentArtifact` in lib/types.ts), emitted
+ * alongside this one for the same turn.
+ */
+export interface LiveDispatchEvent {
+  channel: string;
+  delivered: boolean;
+  simulated: boolean;
+  reference: string | null;
+  detail: string | null;
 }
 
 /**

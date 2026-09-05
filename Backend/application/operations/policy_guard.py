@@ -14,6 +14,8 @@ from application .constants import InterventionAction ,InterventionChannel
 _MONEY_MOVING_ACTIONS =frozenset (
 {
 InterventionAction .GENERATE_PAYMENT_LINK .value ,
+InterventionAction .GENERATE_QR_CODE .value ,
+InterventionAction .OFFER_PARTIAL_PLAN .value ,
 InterventionAction .RETRY_CHARGE .value ,
 InterventionAction .OFFER_FEE_WAIVER .value ,
 }

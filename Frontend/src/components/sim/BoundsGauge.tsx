@@ -1,7 +1,7 @@
 "use client";
 
 import { fillTemplate, useI18n } from "@/lib/i18n";
-import { formatRelative } from "@/lib/format";
+import { formatDate, formatMoney, formatRelative } from "@/lib/format";
 import { stoppingRuleText } from "@/lib/status";
 import type { Bounds } from "@/lib/bounds";
 import { CHANNELS, type Channel } from "@/lib/types";
@@ -21,9 +21,14 @@ import { CHANNELS, type Channel } from "@/lib/types";
 export function BoundsGauge({
   bounds,
   dense = false,
+  balanceDue = null,
 }: {
   bounds: Bounds;
   dense?: boolean;
+  /** A partial plan's outstanding position — booked on the case's own
+   * metadata, not part of `Bounds` itself, so the caller (the `/live`
+   * theatre) reads it off the latest payment artifact and passes it in. */
+  balanceDue?: { amountInr: number; deadline: string } | null;
 }) {
   const { t, locale } = useI18n();
 
@@ -83,6 +88,15 @@ export function BoundsGauge({
           <p className="tabular text-[var(--muted)]">
             {fillTemplate(t.sim.nextAction, {
               when: formatRelative(bounds.nextActionAt.toISOString(), locale),
+            })}
+          </p>
+        ) : null}
+
+        {balanceDue ? (
+          <p className="tabular font-medium text-[var(--inflight)]">
+            {fillTemplate(t.sim.balanceDue, {
+              amount: formatMoney(balanceDue.amountInr),
+              date: formatDate(balanceDue.deadline, locale),
             })}
           </p>
         ) : null}

@@ -40,6 +40,11 @@ class TurnBody(BaseModel):
     at_offset_sec: int = Field(0, ge=0)
 
 
+class AgentToolBody(BaseModel):
+    tool: str
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
 def _require(session_id: str):
     session = get_session(session_id)
     if session is None:
@@ -102,6 +107,34 @@ def ingest_call_turn(session_id: str, payload: TurnBody, db: Session = Depends(g
         return session.ingest_turn(db, payload.speaker, payload.text, payload.at_offset_sec)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.post("/{session_id}/agent/tool")
+def run_agent_tool(session_id: str, payload: AgentToolBody, db: Session = Depends(get_db)) -> dict[str, Any]:
+    session = _require(session_id)
+    try:
+        return session.run_agent_tool(db, payload.tool, payload.args)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.get("/{session_id}/artifacts")
+def list_artifacts(session_id: str, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    session = _require(session_id)
+    return session.list_artifacts(db)
+
+
+@router.post("/{session_id}/artifacts/{artifact_id}/simulate-pay")
+def simulate_artifact_payment(
+    session_id: str, artifact_id: int, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    session = _require(session_id)
+    try:
+        return session.simulate_payment(db, artifact_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
 @router.delete("/{session_id}")

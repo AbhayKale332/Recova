@@ -54,6 +54,27 @@ def sandbox_for (db :Session )->PolicySandbox :
     return PolicySandbox (get_policy (db ))
 
 
+_BACKFILL_ACTIONS =(InterventionAction .GENERATE_QR_CODE .value ,InterventionAction .OFFER_PARTIAL_PLAN .value )
+
+
+def backfill_default_actions (db :Session )->list [str ]:
+    """Union the two Part 1 actions into an existing policy row's allowlist.
+
+    An existing ``recovery_engine.db`` seeded before this change only holds the
+    legacy six actions, and ``_row`` only seeds defaults when the row is
+    absent - so a live deployment would answer "not permitted by policy" for
+    both new tools forever. This is idempotent and additive only: it never
+    removes an action an operator deliberately took away.
+    """
+    row =_row (db )
+    current =list (row .allowed_actions or [])
+    added =[a for a in _BACKFILL_ACTIONS if a not in current ]
+    if added :
+        row .allowed_actions =current +added
+        db .commit ()
+    return added
+
+
 def update_policy (db :Session ,patch :dict )->dict :
     row =_row (db )
 

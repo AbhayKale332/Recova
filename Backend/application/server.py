@@ -29,12 +29,27 @@ async def lifespan (app :FastAPI ):
 
 
     init_db ()
+    _backfill_policy_actions ()
 
     # Simulation runs accumulate on every click, so old ones are dropped at
     # startup rather than left to grow the database across a demo afternoon.
     _prune_simulation_runs ()
     _prune_live_sessions ()
     yield
+
+
+def _backfill_policy_actions ()->None :
+    from application .persistence import SessionLocal
+    from application .operations import policy_repository
+    import logging
+
+    db =SessionLocal ()
+    try :
+        added =policy_repository .backfill_default_actions (db )
+        if added :
+            logging .getLogger (__name__ ).info ("Backfilled merchant policy actions: %s",added )
+    finally :
+        db .close ()
 
 
 def _prune_simulation_runs ()->None :

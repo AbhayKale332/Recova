@@ -12,7 +12,7 @@ import asyncio
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from sqlalchemy.orm import Session
@@ -29,6 +29,8 @@ from application.constants import (
     MessageStatus,
     NodeName,
     Outcome,
+    PaymentArtifactKind,
+    PaymentArtifactStatus,
     Playbook,
     StoppingRule,
     TransactionLifecycleState,
@@ -38,10 +40,14 @@ from application.entities import (
     CallSession,
     CallTurn,
     Message,
+    PaymentArtifact,
     TransactionState,
 )
 from application.helpers import next_quiet_hours_end, now_ist, resolve_clock_ist
-from application.operations import agent_tools
+from application.persistence import SessionLocal
+from application.integrations.adapter_base import DispatchResult
+from application.integrations.razorpay_mcp import payment_render_variant
+from application.operations import agent_tools, payment_artifacts
 from application.operations.agent_tools import AgentDecision, AgentTool, decide_tool
 from application.operations.audit_service import record_audit
 from application.operations.compliance_rules import is_within_quiet_hours, screen_user_message
@@ -51,6 +57,7 @@ from application.operations.model_router import ProviderUnavailable, RouteDecisi
 from application.operations.policy_repository import get_policy
 from application.operations.playbook_map import DEFAULT_PLAYBOOK, PLAYBOOK_ACTION
 from application.operations.reconciliation_service import compute_metrics
+from application.operations.voice_attempts import voice_attempt_count
 from application.operations.wire import _ser_msg
 from application.simulation.scenario import CaseShape, CustomCase, Scenario, plan, to_transaction
 from application.settings import settings
@@ -187,6 +194,10 @@ class LiveSession:
     loop: asyncio.AbstractEventLoop | None = None
     last_decision: AgentDecision | None = None
     call_session_id: int | None = None
+    # Polls Razorpay for a minted artifact's payment status - there is no
+    # webhook reachable from localhost in the demo, so this is what notices a
+    # completed checkout and reflects it back into the WhatsApp thread.
+    poll_task: asyncio.Task | None = None
     # The IST wall clock this session's compliance checks read. Injected like
     # OrchestratorDeps.clock, so an authored case can pin a moment (e.g. to demo
     # TRAI quiet hours live) via CustomCase.clock_ist - see create_session().
@@ -208,6 +219,8 @@ class LiveSession:
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
+        if self.poll_task is None and not self.closed:
+            self.poll_task = loop.create_task(self._poll_payments())
 
     def _signal_end(self) -> None:
         def put_end() -> None:
@@ -314,6 +327,39 @@ class LiveSession:
             self.started = True
             self._opening(db)
 
+    def _mint_artifact(self, db: Session, txn: TransactionState, decision: AgentDecision) -> PaymentArtifact:
+        """Mint the artifact a payment-action decision authorized.
+
+        gate_tool has already cleared quiet hours, caps, and the sandbox
+        ceiling against ``decision.request_amount_minor`` - this only decides
+        *which kind* of artifact to render and, for a partial plan, books the
+        remaining balance and deadline.
+        """
+        if decision.action == InterventionAction.GENERATE_QR_CODE:
+            kind = PaymentArtifactKind.QR
+        else:
+            variant = payment_render_variant(int(txn.failure_class))
+            kind = {
+                "link": PaymentArtifactKind.LINK,
+                "upi": PaymentArtifactKind.UPI_LINK,
+                "qr": PaymentArtifactKind.QR,
+            }.get(variant, PaymentArtifactKind.LINK)
+
+        amount_minor = decision.request_amount_minor or txn.amount_minor
+        if decision.action == InterventionAction.OFFER_PARTIAL_PLAN:
+            deadline_days = decision.deadline_days or settings.partial_plan_default_days
+            deadline = self.clock() + timedelta(days=deadline_days)
+            return payment_artifacts.mint(
+                db,
+                txn,
+                kind,
+                amount_minor=amount_minor,
+                accept_partial=True,
+                first_min_partial_minor=amount_minor,
+                deadline=deadline,
+            )
+        return payment_artifacts.mint(db, txn, kind, amount_minor=amount_minor)
+
     def _apply_agent_decision(
         self,
         db: Session,
@@ -321,23 +367,27 @@ class LiveSession:
         body: str | None,
         *,
         playbook: Playbook | None = None,
-    ) -> None:
+    ) -> PaymentArtifact | None:
         txn = self._txn(db)
+        _PAYMENT_ACTIONS = {
+            InterventionAction.GENERATE_PAYMENT_LINK,
+            InterventionAction.GENERATE_QR_CODE,
+            InterventionAction.OFFER_PARTIAL_PLAN,
+        }
         if decision.allowed and decision.channel is not None:
             dispatch_result = None
-            if decision.action == InterventionAction.GENERATE_PAYMENT_LINK:
-                # decide_tool has already run quiet hours, caps, and PolicySandbox.validate().
-                from application.integrations.routing_dispatcher import build_dispatcher
-                from application.operations.policy_guard import ProposedAction
-
-                dispatch_result = build_dispatcher(db, live_mode=settings.live_mode)(
-                    ProposedAction(
-                        action=decision.action,
-                        channel=decision.channel,
-                        discount_pct=decision.discount_pct,
-                        amount_minor=txn.amount_minor,
-                    ),
-                    {"transaction_id": self.transaction_id},
+            artifact = None
+            if decision.action in _PAYMENT_ACTIONS:
+                # gate_tool has already run quiet hours, caps, and PolicySandbox.validate().
+                artifact = self._mint_artifact(db, txn, decision)
+                dispatch_result = DispatchResult(
+                    decision.channel.value,
+                    delivered=True,
+                    simulated=artifact.simulated,
+                    reference=artifact.provider_id,
+                    detail=artifact.detail,
+                    url=artifact.url,
+                    image_url=artifact.image_url,
                 )
             txn.current_state = TransactionLifecycleState.INTERVENING
             db.commit()
@@ -366,8 +416,40 @@ class LiveSession:
                         "detail": dispatch_result.detail,
                     },
                 )
+            elif decision.action not in _PAYMENT_ACTIONS:
+                # Non-payment channel dispatch (WhatsApp / voice / fee waiver)
+                # still goes through the shared adapter routing.
+                from application.integrations.routing_dispatcher import build_dispatcher
+                from application.operations.policy_guard import ProposedAction
+
+                dispatch_result = build_dispatcher(db, live_mode=settings.live_mode)(
+                    ProposedAction(
+                        action=decision.action,
+                        channel=decision.channel,
+                        discount_pct=decision.discount_pct,
+                        amount_minor=txn.amount_minor,
+                    ),
+                    {"transaction_id": self.transaction_id},
+                )
+                self.emit(
+                    "dispatch",
+                    {
+                        "channel": dispatch_result.channel,
+                        "delivered": dispatch_result.delivered,
+                        "simulated": dispatch_result.simulated,
+                        "reference": dispatch_result.reference,
+                        "detail": dispatch_result.detail,
+                    },
+                )
+            if artifact is not None:
+                self.emit("artifact", artifact.as_dict())
+                if artifact.url and body and artifact.url not in body:
+                    body = f"{body}\n\n{artifact.url}"
             if body:
-                message = self._add_message(db, MessageDirection.OUTBOUND, MessageSender.AGENT, body, {"ai_drafted": True})
+                meta = {"ai_drafted": True}
+                if artifact is not None:
+                    meta["payment_artifact"] = artifact.as_dict()
+                message = self._add_message(db, MessageDirection.OUTBOUND, MessageSender.AGENT, body, meta)
                 self.emit("message", _ser_msg(message))
             if decision.channel == InterventionChannel.VOICE:
                 call = CallSession(
@@ -392,7 +474,7 @@ class LiveSession:
                         "call_session_id": call.id,
                     },
                 )
-            return
+            return artifact
 
         if body and decision.allowed and decision.tool in {AgentTool.STOP, AgentTool.HANDOFF_TO_HUMAN}:
             message = self._add_message(db, MessageDirection.OUTBOUND, MessageSender.SYSTEM, body)
@@ -416,6 +498,7 @@ class LiveSession:
         elif decision.terminal_state == TransactionLifecycleState.WAITING:
             self.emit("bounds", _bounds(db, txn, clock=self.clock))
             self.emit("status", {"final_state": TransactionLifecycleState.WAITING.value})
+        return None
 
     def _finish(self, db: Session, final_state: str, stopping_rule: str | None = None) -> None:
         txn = self._txn(db)
@@ -511,7 +594,14 @@ class LiveSession:
         self.emit("typing", {"who": "agent"})
         body, converse_route = self._converse(db, text)
         self._route(converse_route)
-        decision = decide_tool(db, self.transaction_id, model_router=agent_tools.router, now_ist=self.clock())
+        decision = decide_tool(
+            db,
+            self.transaction_id,
+            model_router=agent_tools.router,
+            now_ist=self.clock(),
+            customer_text=text,
+            agent_draft=body,
+        )
         self.last_decision = decision
         self._route(decision.route_decision)
         self.emit("decision", decision.as_dict())
@@ -537,6 +627,209 @@ class LiveSession:
             "call_session_id": self.call_session_id,
             "reason": "Vapi web-call configuration active.",
         }
+
+    def run_agent_tool(self, db: Session, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Gate and (on allow) mint a tool the voice or chat client names directly.
+
+        This is the one entry point the browser's Vapi tool-call handler
+        calls (Part 4) - it runs the identical ``gate_tool`` chain a model
+        proposal would, so the voice agent cannot mint anything the chat
+        agent could not.
+        """
+        try:
+            # Coerce through the enum first, exactly like decide_tool's
+            # boundary - an unoffered function name never reaches gate_tool.
+            tool = AgentTool(tool_name)
+        except (TypeError, ValueError):
+            raise ValueError(f"Unknown agent tool: {tool_name!r}")
+
+        txn = self._txn(db)
+        attempts = voice_attempt_count(db, self.transaction_id, None)
+        route_decision = RouteDecision(
+            task="TOOL_CALL",
+            tier="direct",
+            provider="client",
+            model="named-tool",
+            reason=f"The client directly named {tool.value}.",
+            raised_by=[],
+            escalated_from=None,
+            latency_ms=0.0,
+            tokens=None,
+        )
+
+        request_amount_minor: int | None = None
+        if tool == AgentTool.OFFER_PARTIAL_PLAN and args.get("first_payment_inr") is not None:
+            request_amount_minor = round(float(args["first_payment_inr"]) * 100)
+        elif args.get("amount_inr") is not None:
+            request_amount_minor = round(float(args["amount_inr"]) * 100)
+
+        deadline_days = args.get("deadline_days")
+        deadline_days = int(deadline_days) if deadline_days is not None else None
+
+        decision = agent_tools.gate_tool(
+            db,
+            txn,
+            tool,
+            route_decision=route_decision,
+            model_reason=f"Client-named tool call: {tool.value}.",
+            request_amount_minor=request_amount_minor,
+            deadline_days=deadline_days,
+            voice_attempts=attempts,
+            now_ist=self.clock(),
+        )
+        self.last_decision = decision
+        self.emit("decision", decision.as_dict())
+        artifact = self._apply_agent_decision(db, decision, None)
+        txn = self._txn(db)
+        if not self.terminal:
+            self.emit("bounds", _bounds(db, txn, clock=self.clock))
+            self.emit("status", {"final_state": txn.current_state.value})
+        return {
+            "allowed": decision.allowed,
+            "tool": decision.tool.value,
+            "reason": decision.reason,
+            "sandbox_reason": decision.sandbox_reason,
+            "artifact": artifact.as_dict() if artifact is not None else None,
+        }
+
+    def simulate_payment(self, db: Session, artifact_id: int) -> dict[str, Any]:
+        """Demo-only: force one of this case's artifacts straight to paid and
+        announce it into the thread exactly as a real reconciled payment
+        would be. See ``payment_artifacts.simulate_paid``."""
+        artifact = (
+            db.query(PaymentArtifact)
+            .filter_by(id=artifact_id, transaction_id=self.transaction_id)
+            .one_or_none()
+        )
+        if artifact is None:
+            raise LookupError(f"Unknown payment artifact: {artifact_id!r}")
+        payment_artifacts.simulate_paid(db, artifact)
+        self._announce_payment(db, artifact)
+        return artifact.as_dict()
+
+    def list_artifacts(self, db: Session) -> list[dict[str, Any]]:
+        rows = (
+            db.query(PaymentArtifact)
+            .filter_by(transaction_id=self.transaction_id)
+            .order_by(PaymentArtifact.id)
+            .all()
+        )
+        return [row.as_dict() for row in rows]
+
+    async def _poll_payments(self) -> None:
+        """Background loop: notice a completed Razorpay checkout and reflect
+        it into the thread. There is no webhook reachable from localhost in
+        the demo, so this poll is the only thing that ever calls ``reconcile``
+        for a live session.
+
+        ``reconcile`` makes a synchronous Razorpay call (an MCP round trip is
+        itself a blocking ``future.result()`` under the hood) - run it in a
+        worker thread, never inline on this coroutine, or one slow poll
+        freezes the whole server's event loop for every session and request.
+        """
+        try:
+            while not self.closed and not self.terminal:
+                await asyncio.sleep(settings.payment_poll_seconds)
+                if self.closed or self.terminal:
+                    return
+                await asyncio.to_thread(self._reconcile_pending_once)
+        except asyncio.CancelledError:
+            pass
+
+    def _reconcile_pending_once(self) -> None:
+        db = SessionLocal()
+        try:
+            self._reconcile_pending(db)
+        except Exception:
+            # A flaky Razorpay call must not take the session down; the next
+            # tick tries again.
+            pass
+        finally:
+            db.close()
+
+    def _reconcile_pending(self, db: Session) -> None:
+        pending = (
+            db.query(PaymentArtifact)
+            .filter_by(transaction_id=self.transaction_id)
+            .filter(PaymentArtifact.provider_id.isnot(None))
+            .filter(
+                PaymentArtifact.status.in_(
+                    [PaymentArtifactStatus.CREATED, PaymentArtifactStatus.PARTIALLY_PAID]
+                )
+            )
+            .all()
+        )
+        for artifact in pending:
+            if self.terminal:
+                return
+            before_status = artifact.status
+            before_paid = artifact.amount_paid_minor
+            payment_artifacts.reconcile(db, artifact)
+            if artifact.status != before_status or artifact.amount_paid_minor != before_paid:
+                self._announce_payment(db, artifact)
+
+    def _announce_payment(self, db: Session, artifact: PaymentArtifact) -> None:
+        if self.closed:
+            return
+        txn = self._txn(db)
+        hi = self.locale == "hi"
+        paid_now = f"₹{int(artifact.amount_paid_minor / 100):,}"
+
+        if artifact.status == PaymentArtifactStatus.PAID and not artifact.accept_partial:
+            body = (
+                f"भुगतान मिल गया — {paid_now}। धन्यवाद!"
+                if hi
+                else f"Payment received — {paid_now}. Thank you!"
+            )
+        elif artifact.status == PaymentArtifactStatus.PARTIALLY_PAID:
+            balance = int((txn.metadata_json or {}).get("balance_due_minor", 0))
+            balance_text = f"₹{balance:,}"
+            body = (
+                f"भुगतान मिल गया — {paid_now}। शेष {balance_text} अभी भी बकाया है।"
+                if hi
+                else f"Payment received — {paid_now}. {balance_text} still due."
+            )
+        elif artifact.status == PaymentArtifactStatus.PAID and artifact.accept_partial:
+            # The partial plan's remaining balance just got cleared in full.
+            body = (
+                f"भुगतान मिल गया — {paid_now}। आपका पूरा बकाया चुक गया है, धन्यवाद!"
+                if hi
+                else f"Payment received — {paid_now}. That clears the balance in full — thank you!"
+            )
+        else:
+            return
+
+        message = self._add_message(
+            db,
+            MessageDirection.OUTBOUND,
+            MessageSender.SYSTEM,
+            body,
+            {"payment_confirmed": True, "payment_artifact": artifact.as_dict()},
+        )
+        self.emit("message", _ser_msg(message))
+        self.emit("artifact", artifact.as_dict())
+        record_audit(
+            db,
+            transaction_id=self.transaction_id,
+            node_name=NodeName.RECONCILE,
+            action_type=ActionType.STATE_TRANSITION,
+            payload={
+                "event": "PAYMENT_RECONCILED",
+                "artifact_id": artifact.id,
+                "status": artifact.status.value,
+                "amount_paid_minor": artifact.amount_paid_minor,
+            },
+            outcome=Outcome.SUCCESS,
+        )
+
+        txn = self._txn(db)
+        if self.terminal:
+            return
+        if txn.current_state == TransactionLifecycleState.RECOVERED:
+            self._finish(db, txn.current_state.value)
+        else:
+            self.emit("bounds", _bounds(db, txn, clock=self.clock))
+            self.emit("status", {"final_state": txn.current_state.value})
 
     def ingest_turn(self, db: Session, speaker: str, text: str, at_offset_sec: int = 0) -> dict[str, Any]:
         if self.call_session_id is None:
@@ -565,6 +858,8 @@ class LiveSession:
         if self.closed:
             return
         self.closed = True
+        if self.poll_task is not None:
+            self.poll_task.cancel()
         # DELETE ends the in-process session only. Durable rows intentionally
         # remain so the transcript and append-only audit evidence can still be
         # read after leaving the theatre. In particular, never bulk-delete

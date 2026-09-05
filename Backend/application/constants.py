@@ -78,6 +78,8 @@ class InterventionAction (str ,Enum ):
     VOICE_CALL ="VOICE_CALL"
     OFFER_FEE_WAIVER ="OFFER_FEE_WAIVER"
     GENERATE_PAYMENT_LINK ="GENERATE_PAYMENT_LINK"
+    GENERATE_QR_CODE ="GENERATE_QR_CODE"
+    OFFER_PARTIAL_PLAN ="OFFER_PARTIAL_PLAN"
     RETRY_CHARGE ="RETRY_CHARGE"
     CANCEL_SUBSCRIPTION ="CANCEL_SUBSCRIPTION"
 
@@ -143,6 +145,24 @@ class CallSpeaker (str ,Enum ):
 
     AGENT ="AGENT"
     CUSTOMER ="CUSTOMER"
+
+
+class PaymentArtifactKind (str ,Enum ):
+    """What a minted Razorpay payment artifact actually is."""
+
+    LINK ="LINK"
+    UPI_LINK ="UPI_LINK"
+    QR ="QR"
+
+
+class PaymentArtifactStatus (str ,Enum ):
+    """Lifecycle of a minted payment artifact, independent of the case's own state."""
+
+    CREATED ="created"
+    PAID ="paid"
+    PARTIALLY_PAID ="partially_paid"
+    EXPIRED ="expired"
+    CLOSED ="closed"
 
 
 class Playbook (str ,Enum ):

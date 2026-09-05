@@ -64,6 +64,8 @@ class AgentTool(str, Enum):
     SEND_WHATSAPP = "SEND_WHATSAPP"
     VOICE_CALL = "VOICE_CALL"
     GENERATE_PAYMENT_LINK = "GENERATE_PAYMENT_LINK"
+    GENERATE_QR_CODE = "GENERATE_QR_CODE"
+    OFFER_PARTIAL_PLAN = "OFFER_PARTIAL_PLAN"
     OFFER_FEE_WAIVER = "OFFER_FEE_WAIVER"
     SCHEDULE_RETRY = "SCHEDULE_RETRY"
     HANDOFF_TO_HUMAN = "HANDOFF_TO_HUMAN"
@@ -88,6 +90,8 @@ class AgentDecision:
     discount_pct: float | None = None
     requested_tool: AgentTool | None = None
     scheduled_for: str | None = None
+    request_amount_minor: int | None = None
+    deadline_days: int | None = None
 
     @property
     def state(self) -> TransactionLifecycleState | None:
@@ -122,6 +126,16 @@ _TOOL_RESOLUTION: dict[
     AgentTool.VOICE_CALL: (InterventionAction.VOICE_CALL, InterventionChannel.VOICE, None),
     AgentTool.GENERATE_PAYMENT_LINK: (
         InterventionAction.GENERATE_PAYMENT_LINK,
+        InterventionChannel.PAYMENT_LINK,
+        None,
+    ),
+    AgentTool.GENERATE_QR_CODE: (
+        InterventionAction.GENERATE_QR_CODE,
+        InterventionChannel.PAYMENT_LINK,
+        None,
+    ),
+    AgentTool.OFFER_PARTIAL_PLAN: (
+        InterventionAction.OFFER_PARTIAL_PLAN,
         InterventionChannel.PAYMENT_LINK,
         None,
     ),
@@ -175,111 +189,79 @@ def _decide_prompt(
     *,
     policy: dict[str, Any],
     voice_attempts: int,
+    recent_messages: list[str] | None = None,
 ) -> str:
     offered = ", ".join(tool.value for tool in AgentTool)
-    return "\n".join(
-        [
-            "You are the decision layer of a payment-recovery agent.",
-            f"The failure class is {failure_class.name} ({failure_class.value}).",
-            f"The transaction amount is ₹{txn.amount_minor / 100:,.2f}.",
-            f"Retries already used: {txn.retry_count} of {txn.max_retries}.",
-            f"Voice attempts already used: {voice_attempts} of {VOICE_ATTEMPT_CAP}.",
-            f"The merchant policy discount cap is {policy['max_discount_pct']}%.",
-            f"Choose exactly one tool from: {offered}.",
-            'Return STRICT JSON: {"tool": string, "reason": string, "message": string|null, '
-            '"discount_pct": number|null, "confidence": number}.',
-            "Never invent a tool, widen the policy, or treat a disposition as a channel dispatch.",
-        ]
+    meta = getattr(txn, "metadata_json", None) or {}
+    lines = [
+        "You are the decision layer of a payment-recovery agent.",
+        f"The failure class is {failure_class.name} ({failure_class.value}).",
+        f"The transaction amount is ₹{txn.amount_minor / 100:,.2f}.",
+        f"Retries already used: {txn.retry_count} of {txn.max_retries}.",
+        f"Voice attempts already used: {voice_attempts} of {VOICE_ATTEMPT_CAP}.",
+        f"The merchant policy discount cap is {policy['max_discount_pct']}%.",
+    ]
+    ceiling_minor = policy.get("max_intervention_amount_minor")
+    if ceiling_minor is not None:
+        lines.append(
+            f"A single payment action (link, QR, or partial plan's first payment) cannot "
+            f"exceed ₹{int(ceiling_minor) / 100:,.0f} — propose a smaller first payment instead "
+            f"of a full amount that would be refused."
+        )
+    balance_due = meta.get("balance_due_minor")
+    if balance_due is not None:
+        lines.append(f"A partial plan already exists: ₹{int(balance_due) / 100:,.2f} balance still due.")
+        deadline = meta.get("balance_deadline")
+        if deadline:
+            lines.append(f"That balance is due by {deadline}.")
+    if recent_messages:
+        lines.append("Recent thread (oldest first):")
+        lines.extend(f"- {entry}" for entry in recent_messages)
+    lines.append(f"Choose exactly one tool from: {offered}.")
+    lines.append(
+        'Return STRICT JSON: {"tool": string, "reason": string, "message": string|null, '
+        '"discount_pct": number|null, "partial_amount_inr": number|null, '
+        '"deadline_days": number|null, "confidence": number}.'
     )
+    lines.append(
+        '"partial_amount_inr" is the amount to request now with OFFER_PARTIAL_PLAN; '
+        '"deadline_days" is when the remaining balance falls due.'
+    )
+    lines.append("Never invent a tool, widen the policy, or treat a disposition as a channel dispatch.")
+    return "\n".join(lines)
 
 
 def _route_fallback(task: str, **kwargs: Any) -> RouteDecision:
     return explain_route(task, **kwargs)
 
 
-def decide_tool(
+def gate_tool(
     db: Session,
-    transaction_id: str,
+    txn: TransactionState,
+    tool: AgentTool,
     *,
-    failure_class: FailureClass | int | None = None,
-    voice_attempts: int | None = None,
+    route_decision: RouteDecision,
+    model_reason: str = "",
+    message: str | None = None,
     discount_pct: float | None = None,
-    proposed_discount_pct: float | None = None,
+    request_amount_minor: int | None = None,
+    deadline_days: int | None = None,
+    voice_attempts: int = 0,
     now_ist: datetime | None = None,
-    model_router: ModelRouter | None = None,
     sandbox: PolicySandbox | None = None,
 ) -> AgentDecision:
-    """Evaluate the gates and commit the resulting transition and audit rows.
+    """Evaluate the deterministic gates for one proposed tool and commit the result.
 
-    This evaluates quiet-hours, retry, voice-cap, and policy gates, then
-    commits the resulting lifecycle transition, escalation, and audit rows.
-    Call it exactly once per turn. It does not dispatch a channel adapter;
-    callers use the returned decision to perform an allowed dispatch.
+    Precedence is intentionally identical to workflow_nodes.execute: HANDOFF /
+    STOP short-circuit first, then quiet hours -> retry cap -> voice cap ->
+    PolicySandbox.validate(). This is the gate chain shared by decide_tool
+    (a model proposal) and the voice agent's client-side function calls
+    (Part 4) - the sandbox never sees a difference between the two callers.
     """
-    txn = db.query(TransactionState).filter_by(transaction_id=transaction_id).one_or_none()
-    if txn is None:
-        raise ValueError(f"Unknown transaction: {transaction_id!r}")
-
-    fc = FailureClass(failure_class if failure_class is not None else txn.failure_class)
-    policy = policy_repository.get_policy(db)
-    attempts = voice_attempt_count(db, transaction_id, voice_attempts)
-    amount_inr = float(txn.amount_minor) / 100
-    active_router = model_router or router
-    prompt = _decide_prompt(txn, fc, policy=policy, voice_attempts=attempts)
-    route_discount = proposed_discount_pct if proposed_discount_pct is not None else discount_pct
-    route_kwargs = {
-        "amount_inr": amount_inr,
-        "retries_used": int(txn.retry_count),
-        "voice_attempts": attempts,
-        "discount_pct": route_discount,
-        "policy_cap_pct": policy["max_discount_pct"],
-    }
-
-    routed: Any = None
-    route_decision: RouteDecision
-    try:
-        routed = active_router.call("DECIDE", prompt, **route_kwargs)
-        route_decision = routed.decision
-        payload = json.loads(routed.result)
-        if not isinstance(payload, dict):
-            raise ValueError("DECIDE response must be a JSON object")
-    except ProviderUnavailable as exc:
-        logger.warning("DECIDE providers unavailable; applying the class default tool: %s", exc)
-        route_decision = getattr(exc, "decision", None) or _route_fallback("DECIDE", **route_kwargs)
-        payload = {}
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        logger.warning("DECIDE response parsing failed (%s); applying the class default tool.", exc)
-        route_decision = (
-            routed.decision
-            if routed is not None and getattr(routed, "decision", None) is not None
-            else _route_fallback("DECIDE", **route_kwargs)
-        )
-        payload = {}
-
-    raw_tool = payload.get("tool")
-    try:
-        # Coerce directly through the enum before mapping, validating, or logging
-        # any proposed action so an unoffered string cannot widen permissions.
-        proposed_tool = AgentTool(raw_tool)
-    except (TypeError, ValueError):
-        default_playbook = DEFAULT_PLAYBOOK[fc]
-        logger.warning(
-            "The model returned unsupported tool %r; applying the deterministic class default.",
-            raw_tool,
-        )
-        proposed_tool = _tool_for_playbook(default_playbook)
-
-    model_reason = str(payload.get("reason") or "")
-    message = payload.get("message")
-    message = str(message) if message is not None else None
-    raw_discount = payload.get("discount_pct", route_discount)
-    # Preserve an integer percentage so PolicySandbox's user-facing sentence
-    # remains exactly "Discount 20% ...", rather than changing it to 20.0%.
-    if isinstance(raw_discount, Real) and not isinstance(raw_discount, bool):
-        discount_pct = int(raw_discount) if float(raw_discount).is_integer() else float(raw_discount)
-    else:
-        discount_pct = None
+    transaction_id = txn.transaction_id
+    proposed_tool = tool
     action, channel, default_state = _TOOL_RESOLUTION[proposed_tool]
+    amount_minor = request_amount_minor if request_amount_minor is not None else txn.amount_minor
 
     if proposed_tool == AgentTool.HANDOFF_TO_HUMAN:
         reason = model_reason or "The agent requested human review."
@@ -397,8 +379,8 @@ def decide_tool(
             requested_tool=proposed_tool,
         )
 
-    if channel == InterventionChannel.VOICE and voice_attempts_exhausted(attempts):
-        reason = f"Voice attempt cap reached ({attempts} of {VOICE_ATTEMPT_CAP} calls in 72 hours)."
+    if channel == InterventionChannel.VOICE and voice_attempts_exhausted(voice_attempts):
+        reason = f"Voice attempt cap reached ({voice_attempts} of {VOICE_ATTEMPT_CAP} calls in 72 hours)."
         _set_state(
             db,
             txn,
@@ -431,7 +413,7 @@ def decide_tool(
             action=action,
             channel=channel,
             discount_pct=discount_pct,
-            amount_minor=txn.amount_minor,
+            amount_minor=amount_minor,
         )
     )
     if not policy_decision.approved:
@@ -494,6 +476,139 @@ def decide_tool(
         discount_pct=discount_pct,
         requested_tool=proposed_tool,
         scheduled_for=scheduled_for if proposed_tool == AgentTool.SCHEDULE_RETRY else None,
+        request_amount_minor=amount_minor,
+        deadline_days=deadline_days,
+    )
+
+
+def _recent_thread(db: Session, transaction_id: str, limit: int = 6) -> list[str]:
+    from application.entities import Message
+
+    rows = (
+        db.query(Message)
+        .filter_by(transaction_id=transaction_id)
+        .order_by(Message.seq.desc())
+        .limit(limit)
+        .all()
+    )
+    rows.reverse()
+    return [f"{row.sender.value}: {row.body}" for row in rows]
+
+
+def decide_tool(
+    db: Session,
+    transaction_id: str,
+    *,
+    failure_class: FailureClass | int | None = None,
+    voice_attempts: int | None = None,
+    discount_pct: float | None = None,
+    proposed_discount_pct: float | None = None,
+    customer_text: str | None = None,
+    agent_draft: str | None = None,
+    now_ist: datetime | None = None,
+    model_router: ModelRouter | None = None,
+    sandbox: PolicySandbox | None = None,
+) -> AgentDecision:
+    """Route a model proposal for one tool, then run it through ``gate_tool``.
+
+    Call it exactly once per turn. It does not dispatch a channel adapter;
+    callers use the returned decision to perform an allowed dispatch.
+    """
+    txn = db.query(TransactionState).filter_by(transaction_id=transaction_id).one_or_none()
+    if txn is None:
+        raise ValueError(f"Unknown transaction: {transaction_id!r}")
+
+    fc = FailureClass(failure_class if failure_class is not None else txn.failure_class)
+    policy = policy_repository.get_policy(db)
+    attempts = voice_attempt_count(db, transaction_id, voice_attempts)
+    amount_inr = float(txn.amount_minor) / 100
+    active_router = model_router or router
+    recent = _recent_thread(db, transaction_id)
+    if customer_text:
+        recent = recent + [f"customer: {customer_text}"]
+    if agent_draft:
+        recent = recent + [f"agent (drafted): {agent_draft}"]
+    prompt = _decide_prompt(txn, fc, policy=policy, voice_attempts=attempts, recent_messages=recent)
+    route_discount = proposed_discount_pct if proposed_discount_pct is not None else discount_pct
+    route_kwargs = {
+        "amount_inr": amount_inr,
+        "retries_used": int(txn.retry_count),
+        "voice_attempts": attempts,
+        "discount_pct": route_discount,
+        "policy_cap_pct": policy["max_discount_pct"],
+    }
+
+    routed: Any = None
+    route_decision: RouteDecision
+    try:
+        routed = active_router.call("DECIDE", prompt, **route_kwargs)
+        route_decision = routed.decision
+        payload = json.loads(routed.result)
+        if not isinstance(payload, dict):
+            raise ValueError("DECIDE response must be a JSON object")
+    except ProviderUnavailable as exc:
+        logger.warning("DECIDE providers unavailable; applying the class default tool: %s", exc)
+        route_decision = getattr(exc, "decision", None) or _route_fallback("DECIDE", **route_kwargs)
+        payload = {}
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning("DECIDE response parsing failed (%s); applying the class default tool.", exc)
+        route_decision = (
+            routed.decision
+            if routed is not None and getattr(routed, "decision", None) is not None
+            else _route_fallback("DECIDE", **route_kwargs)
+        )
+        payload = {}
+
+    raw_tool = payload.get("tool")
+    try:
+        # Coerce directly through the enum before mapping, validating, or logging
+        # any proposed action so an unoffered string cannot widen permissions.
+        proposed_tool = AgentTool(raw_tool)
+    except (TypeError, ValueError):
+        default_playbook = DEFAULT_PLAYBOOK[fc]
+        logger.warning(
+            "The model returned unsupported tool %r; applying the deterministic class default.",
+            raw_tool,
+        )
+        proposed_tool = _tool_for_playbook(default_playbook)
+
+    model_reason = str(payload.get("reason") or "")
+    message = payload.get("message")
+    message = str(message) if message is not None else None
+    raw_discount = payload.get("discount_pct", route_discount)
+    # Preserve an integer percentage so PolicySandbox's user-facing sentence
+    # remains exactly "Discount 20% ...", rather than changing it to 20.0%.
+    if isinstance(raw_discount, Real) and not isinstance(raw_discount, bool):
+        discount_pct = int(raw_discount) if float(raw_discount).is_integer() else float(raw_discount)
+    else:
+        discount_pct = None
+
+    # The model proposes an amount and deadline; the code bounds them. Neither
+    # field can widen what PolicySandbox.validate() will accept.
+    request_amount_minor: int | None = None
+    raw_partial = payload.get("partial_amount_inr")
+    if isinstance(raw_partial, Real) and not isinstance(raw_partial, bool):
+        clamped_inr = max(0.01, min(float(raw_partial), amount_inr))
+        request_amount_minor = round(clamped_inr * 100)
+
+    deadline_days: int | None = None
+    raw_deadline = payload.get("deadline_days")
+    if isinstance(raw_deadline, Real) and not isinstance(raw_deadline, bool):
+        deadline_days = max(1, min(int(raw_deadline), 90))
+
+    return gate_tool(
+        db,
+        txn,
+        proposed_tool,
+        route_decision=route_decision,
+        model_reason=model_reason,
+        message=message,
+        discount_pct=discount_pct,
+        request_amount_minor=request_amount_minor if proposed_tool == AgentTool.OFFER_PARTIAL_PLAN else None,
+        deadline_days=deadline_days,
+        voice_attempts=attempts,
+        now_ist=now_ist,
+        sandbox=sandbox,
     )
 
 

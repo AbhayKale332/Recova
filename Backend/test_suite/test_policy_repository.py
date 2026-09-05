@@ -4,6 +4,7 @@ import pytest
 
 from application .operations .policy_repository import (
 PolicyValidationError ,
+backfill_default_actions ,
 get_policy ,
 sandbox_for ,
 update_policy ,
@@ -17,6 +18,22 @@ def test_policy_seeds_from_defaults (db_session ):
     p =get_policy (db_session )
     assert p ["max_discount_pct"]==15
     assert "SEND_WHATSAPP"in p ["allowed_actions"]
+    assert "GENERATE_QR_CODE"in p ["allowed_actions"]
+    assert "OFFER_PARTIAL_PLAN"in p ["allowed_actions"]
+
+
+def test_backfill_adds_missing_actions_to_an_existing_row_and_is_idempotent (db_session ):
+    update_policy (db_session ,{
+    "allowed_actions":["SEND_WHATSAPP","VOICE_CALL","GENERATE_PAYMENT_LINK"],
+    })
+    added =backfill_default_actions (db_session )
+    assert set (added )=={"GENERATE_QR_CODE","OFFER_PARTIAL_PLAN"}
+    actions =get_policy (db_session )["allowed_actions"]
+    assert "GENERATE_QR_CODE"in actions and "OFFER_PARTIAL_PLAN"in actions
+    assert "SEND_WHATSAPP"in actions
+
+    again =backfill_default_actions (db_session )
+    assert again ==[]
 
 
 def test_update_policy_persists (db_session ):

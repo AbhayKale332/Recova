@@ -53,6 +53,10 @@ function describe(event: LiveTurnEvent): string {
         : `Decision: ${humanizeEnum(event.data.tool)}`;
     case "message":
       return `${humanizeEnum(event.data.sender)}: "${truncate(event.data.body)}"`;
+    case "dispatch":
+      return `Dispatched via ${humanizeEnum(event.data.channel)}${event.data.simulated ? " (simulated)" : ""}`;
+    case "artifact":
+      return `${humanizeEnum(event.data.kind)} minted · ${event.data.detail}`;
     case "call_offer":
       return "Call offered";
     case "status":

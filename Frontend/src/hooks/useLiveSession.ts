@@ -10,11 +10,12 @@ import type {
   LiveCallOffer,
   LiveDecision,
   LiveDiagnosis,
+  LiveDispatchEvent,
   LiveStart,
   LiveStep,
   RouteDecision,
 } from "@/lib/simulation";
-import type { ConversationMessage, LifecycleStatus, Metrics } from "@/lib/types";
+import type { ConversationMessage, LifecycleStatus, Metrics, PaymentArtifact } from "@/lib/types";
 
 /**
  * GET /api/v1/live/sessions/{id}/stream, plus the `reply` POST action.
@@ -31,7 +32,7 @@ import type { ConversationMessage, LifecycleStatus, Metrics } from "@/lib/types"
  *
  * Event names come from backend/application/operations/live_session.py:
  *   start · step · diagnosis · route · decision · typing · message ·
- *   call_offer · bounds · status · complete
+ *   dispatch · artifact · call_offer · bounds · status · complete
  */
 
 export type LivePhase = "idle" | "connecting" | "streaming" | "done" | "error";
@@ -43,6 +44,8 @@ export type LiveTurnEvent =
   | { kind: "route"; at: number; data: RouteDecision }
   | { kind: "decision"; at: number; data: LiveDecision }
   | { kind: "message"; at: number; data: ConversationMessage }
+  | { kind: "dispatch"; at: number; data: LiveDispatchEvent }
+  | { kind: "artifact"; at: number; data: PaymentArtifact }
   | { kind: "call_offer"; at: number; data: LiveCallOffer }
   | { kind: "status"; at: number; data: { final_state: LifecycleStatus } }
   | { kind: "complete"; at: number; data: { final_state: LifecycleStatus; metrics: Metrics } };
@@ -65,6 +68,12 @@ export interface LiveSessionState {
   decision: LiveDecision | null;
   typing: "agent" | "customer" | null;
   messages: ConversationMessage[];
+  dispatch: LiveDispatchEvent | null;
+  /** The most recently minted payment artifact — the same object each
+   * carrying message's `meta.payment_artifact` points at, kept here too so
+   * the agent column (BoundsGauge's balance line) can read it without
+   * walking the message list. */
+  artifact: PaymentArtifact | null;
   callOffer: LiveCallOffer | null;
   bounds: Bounds | null;
   finalState: LifecycleStatus | null;
@@ -109,6 +118,8 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
   const [decision, setDecision] = useState<LiveDecision | null>(null);
   const [typing, setTyping] = useState<"agent" | "customer" | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [dispatch, setDispatch] = useState<LiveDispatchEvent | null>(null);
+  const [artifact, setArtifact] = useState<PaymentArtifact | null>(null);
   const [callOffer, setCallOffer] = useState<LiveCallOffer | null>(null);
   const [bounds, setBounds] = useState<Bounds | null>(null);
   const [finalState, setFinalState] = useState<LifecycleStatus | null>(null);
@@ -132,6 +143,8 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
     setDecision(null);
     setTyping(null);
     setMessages([]);
+    setDispatch(null);
+    setArtifact(null);
     setCallOffer(null);
     setBounds(null);
     setFinalState(null);
@@ -208,6 +221,20 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
       setTyping(null);
       setMessages((prev) => [...prev, data]);
       push({ kind: "message", at: Date.now(), data });
+    });
+
+    source.addEventListener("dispatch", (e) => {
+      const data = parse<LiveDispatchEvent>((e as MessageEvent<string>).data);
+      if (!data) return;
+      setDispatch(data);
+      push({ kind: "dispatch", at: Date.now(), data });
+    });
+
+    source.addEventListener("artifact", (e) => {
+      const data = parse<PaymentArtifact>((e as MessageEvent<string>).data);
+      if (!data) return;
+      setArtifact(data);
+      push({ kind: "artifact", at: Date.now(), data });
     });
 
     source.addEventListener("call_offer", (e) => {
@@ -296,6 +323,8 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
     decision,
     typing,
     messages,
+    dispatch,
+    artifact,
     callOffer,
     bounds,
     finalState,

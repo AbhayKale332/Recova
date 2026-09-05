@@ -295,6 +295,7 @@ export const en = {
     fired: "Fired: {rule}",
     nextAction: "Next action {when}",
     noneArmed: "Nothing armed",
+    balanceDue: "{amount} still due · by {date}",
 
     probabilityTitle: "Likelihood this case pays",
     baseRate: "Base rate for this playbook",
@@ -344,8 +345,6 @@ export const en = {
     auditEmpty: "Nothing recorded yet.",
 
     callTitle: "Voice",
-    callOffered: "The agent wants to call.",
-    callComingSoon: "Voice calling arrives in Part 6 — this is a placeholder for the call offer.",
     callSessionId: "Call session #{id}",
     callConnecting: "Connecting voice call…",
     callActive: "Call in progress",
@@ -368,6 +367,15 @@ export const en = {
     customerLabel: "You (customer)",
     agentLabel: "Agent",
     systemLabel: "System",
+
+    payNow: "Pay now",
+    scanQr: "Scan to pay",
+    qrUnavailable: "QR unavailable",
+    artifactSimulated: "Simulated — not a real charge",
+    partialPlanLine: "{now} now · {balance} due by {date}",
+    simulatePayment: "Simulate payment",
+    simulatingPayment: "Marking as paid…",
+    paymentSimulateFailed: "Could not mark this as paid. Try again.",
   },
 };
 

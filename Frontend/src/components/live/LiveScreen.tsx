@@ -18,6 +18,7 @@ import { EmptyState, LoadingState } from "@/components/States";
 import { useToast } from "@/components/Toast";
 import { useLiveSession } from "@/hooks/useLiveSession";
 import { fillTemplate, useI18n } from "@/lib/i18n";
+import { paiseToRupees } from "@/lib/format";
 import { statusLabel } from "@/lib/status";
 
 /**
@@ -97,6 +98,19 @@ export function LiveScreen() {
   const terminal = session.finalState != null && ["RECOVERED", "ESCALATED", "CANCELLED", "FAILED"].includes(session.finalState);
   const composerDisabled = session.sending || session.typing === "agent" || terminal;
 
+  // The artifact carries only what's being asked for *now*; the case's own
+  // amount (session.start) is what turns that into a remaining balance.
+  const balanceDue =
+    session.artifact?.accept_partial && session.artifact.deadline
+      ? {
+          amountInr: Math.max(
+            session.start.amount_inr - paiseToRupees(session.artifact.amount_minor),
+            0,
+          ),
+          deadline: session.artifact.deadline,
+        }
+      : null;
+
   return (
     <div className="mx-auto flex min-h-dvh max-w-[1200px] flex-col gap-4 px-3 py-3 sm:px-4 sm:py-4">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
@@ -137,7 +151,9 @@ export function LiveScreen() {
         >
           <PhoneFrame>
             <WhatsAppThread
+              sessionId={sessionId}
               customerName={session.start.customer_name}
+              caseAmountInr={session.start.amount_inr}
               messages={session.messages}
               typing={session.typing}
               disabled={composerDisabled}
@@ -152,7 +168,7 @@ export function LiveScreen() {
           <DecisionCard decision={session.decision} />
           {session.bounds ? (
             <div className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5">
-              <BoundsGauge bounds={session.bounds} />
+              <BoundsGauge bounds={session.bounds} balanceDue={balanceDue} />
             </div>
           ) : null}
           <div className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5">

@@ -285,6 +285,7 @@ export const hi: Dictionary = {
     fired: "लागू: {rule}",
     nextAction: "अगली कार्रवाई {when}",
     noneArmed: "कुछ सक्रिय नहीं",
+    balanceDue: "{amount} अभी भी बकाया · {date} तक",
 
     probabilityTitle: "इस केस के भुगतान की संभावना",
     baseRate: "इस प्लेबुक की आधार दर",
@@ -329,8 +330,6 @@ export const hi: Dictionary = {
     auditEmpty: "अभी तक कुछ दर्ज नहीं।",
 
     callTitle: "वॉइस",
-    callOffered: "एजेंट कॉल करना चाहता है।",
-    callComingSoon: "वॉइस कॉलिंग भाग 6 में आएगी — यह कॉल-ऑफर के लिए एक प्लेसहोल्डर है।",
     callSessionId: "कॉल सत्र #{id}",
     callConnecting: "वॉइस कॉल जोड़ी जा रही है…",
     callActive: "कॉल जारी है",
@@ -353,5 +352,14 @@ export const hi: Dictionary = {
     customerLabel: "आप (ग्राहक)",
     agentLabel: "एजेंट",
     systemLabel: "सिस्टम",
+
+    payNow: "अभी भुगतान करें",
+    scanQr: "भुगतान के लिए स्कैन करें",
+    qrUnavailable: "QR उपलब्ध नहीं",
+    artifactSimulated: "सिम्युलेटेड — असली भुगतान नहीं",
+    partialPlanLine: "{now} अभी · {balance} {date} तक बकाया",
+    simulatePayment: "भुगतान सिम्युलेट करें",
+    simulatingPayment: "भुगतान दर्ज हो रहा है…",
+    paymentSimulateFailed: "भुगतान दर्ज नहीं हो सका। दोबारा कोशिश करें।",
   },
 };

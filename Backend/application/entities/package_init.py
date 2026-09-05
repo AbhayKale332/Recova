@@ -6,6 +6,7 @@ from application .entities .escalation_queue import EscalationQueue
 from application .entities .merchant_rules import MerchantPolicy
 from application .entities .message_record import Message
 from application .entities .handled_event import ProcessedEvent
+from application .entities .payment_artifact import PaymentArtifact
 from application .entities .transaction_record import TransactionState
 from application .entities .saved_scenario import SavedScenario
 
@@ -16,6 +17,7 @@ __all__ =[
 "EscalationQueue",
 "MerchantPolicy",
 "Message",
+"PaymentArtifact",
 "ProcessedEvent",
 "TransactionState",
 "SavedScenario",
