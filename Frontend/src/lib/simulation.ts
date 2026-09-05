@@ -133,6 +133,9 @@ export interface Contribution {
   delta_pp: number;
 }
 
+/** Which outcome lane a finished case landed in (backend simulation/triage.py). */
+export type TriageLane = "closed" | "human" | "postponed" | "in_flight";
+
 export interface SimCase {
   transaction_id: string;
   failure_class: number;
@@ -144,6 +147,10 @@ export interface SimCase {
   base_rate: number;
   contributions: Contribution[];
   elapsed_ms: number;
+  /** Would production spend an advisory model call on this case? */
+  needs_model: boolean;
+  triage_lane: TriageLane;
+  triage_reasons: string[];
 }
 
 /**
@@ -313,6 +320,25 @@ export interface SimComplete {
     stopped: number;
     waiting: number;
     rules_fired: number;
+  };
+  /**
+   * How the book split by who made the call. `closed + human + postponed +
+   * in_flight` sums to `total`; `llm` overlaps them all — a case can consult the
+   * model and still close without a human. The batch keeps diagnosis offline, so
+   * `model_calls_saved` is what this run avoided against production.
+   */
+  routing: {
+    total: number;
+    llm: number;
+    llm_share: number;
+    deterministic_only: number;
+    closed: number;
+    human: number;
+    postponed: number;
+    in_flight: number;
+    model_calls_made: number;
+    model_calls_saved: number;
+    llm_reasons: Record<string, number>;
   };
   stopping_rules_by_name: Record<string, number>;
   by_class: Record<string, unknown>;

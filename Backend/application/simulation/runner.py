@@ -35,7 +35,7 @@ from application .operations .policy_guard import PolicySandbox
 from application .operations .policy_repository import get_policy
 from application .operations .reconciliation_service import compute_metrics
 from application .persistence import SessionLocal
-from application .simulation import probability ,scenario as scenario_mod ,trace
+from application .simulation import probability ,scenario as scenario_mod ,trace ,triage
 from application .simulation .scenario import PlannedCase ,Scenario
 from application .workflow .recovery_graph import OrchestratorDeps ,build_recovery_graph
 
@@ -62,6 +62,11 @@ class CaseResult :
     contributions :list [dict ]=field (default_factory =list )
     elapsed_ms :float =0.0
     trace :list [dict ]=field (default_factory =list )
+    # Routing triage: whether production would spend an advisory model call on
+    # this case, and which lane the finished case lands in. See simulation.triage.
+    needs_model :bool =False
+    triage_reasons :list [str ]=field (default_factory =list )
+    triage_lane :str =triage .LANE_CLOSED
 
 
 def _percentile (sorted_values :list [float ],fraction :float )->float :
@@ -109,18 +114,24 @@ def _run_one (case :PlannedCase ,policy :dict ,run_id :str ,clock :datetime ,liv
         (step .rule for step in reversed (steps )if step .rule ),None
         )
 
+        final_state =txn .current_state .value
+        need =triage .assess (case )
+
         return CaseResult (
         transaction_id =case .transaction_id ,
         failure_class =case .failure_class ,
         amount_inr =case .amount_inr ,
         customer_name =case .customer_name ,
-        final_state =txn .current_state .value ,
+        final_state =final_state ,
         stopped_by =stopped_by ,
         probability =case .probability .p ,
         base_rate =case .probability .base_rate ,
         contributions =[asdict (c )for c in case .probability .contributions ],
         elapsed_ms =round ((time .perf_counter ()-started )*1000 ,2 ),
         trace =trace .serialize (steps ),
+        needs_model =need .needs_model ,
+        triage_reasons =need .reasons ,
+        triage_lane =triage .disposition (final_state ),
         )
     finally :
         db .close ()
@@ -207,6 +218,9 @@ async def run (sc :Scenario ,concurrency :int =DEFAULT_CONCURRENCY )->AsyncItera
         "base_rate":round (result .base_rate ,4 ),
         "contributions":result .contributions ,
         "elapsed_ms":result .elapsed_ms ,
+        "needs_model":result .needs_model ,
+        "triage_lane":result .triage_lane ,
+        "triage_reasons":result .triage_reasons ,
         }
 
         now =time .perf_counter ()
@@ -282,6 +296,13 @@ peak_busy :int ,
     "waiting":sum (1 for r in results if r .final_state ==TransactionLifecycleState .WAITING .value ),
     "rules_fired":len (stopped ),
     },
+    # How the book splits by who made the call: deterministic code, the advisory
+    # model, or a human - plus what was deferred. The batch keeps diagnosis
+    # offline, so this is the split production *would* see, measured per case.
+    "routing":triage .summarise (
+    ((r .needs_model ,r .triage_reasons ,r .triage_lane )for r in results ),
+    live_diagnosis =sc .live_diagnosis ,
+    ),
     "stopping_rules_by_name":metrics ["stopping_rules_by_name"],
     "by_class":metrics ["by_class"],
     "funnel":metrics ["funnel"],

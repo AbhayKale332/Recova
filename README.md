@@ -356,10 +356,10 @@ sequenceDiagram
         Pool->>DB: own Session per worker thread
         Pool->>Graph: invoke(initial_state) — same sandbox, same compliance rules
         Graph->>DB: commit transitions + audit rows
-        Pool-->>UI: SSE "case" {final_state, stopped_by, p, contributions}
+        Pool-->>UI: SSE "case" {final_state, stopped_by, p, contributions, needs_model, triage_lane}
         Runner-->>UI: SSE "progress" {rate, p50_ms, p95_ms, workers_busy} (coalesced @ 0.1s)
     end
-    Runner-->>UI: SSE "complete" {recovered_inr, projected_inr, deferred_inr, grrr, funnel, throughput}
+    Runner-->>UI: SSE "complete" {recovered_inr, projected_inr, deferred_inr, grrr, funnel, routing, throughput}
 ```
 
 **Why it's built this way**
@@ -368,6 +368,7 @@ sequenceDiagram
 - **Concurrency.** A SQLAlchemy Session isn't thread-safe and every graph node commits — so each case gets its own Session, opened and closed inside the worker; the graph runs in a worker thread via `to_thread`; SQLite runs in WAL with a busy timeout. *(Bonus: the test suite went from 228s → 37s.)*
 - **Authored cases.** Scenarios accept operator-written cases alongside generated ones. A typed Hinglish opt-out flows through the same `screen_user_message()` ingest gate — so it's a real `OPT_OUT` decision, not a special case.
 - **Scenario percentages can never rewrite an authored case.** Settlement quirks are apportioned across *generated* cases only.
+- **The batch answers "how many need the LLM?" without making the calls.** `application/simulation/triage.py` scores every planned case against the same raisers the `model_router` uses (stakes ≥ ₹25k, guardrail proximity) plus two ambiguity signals — a free-text reply the deterministic screen can't classify, and a failure class with no machine telemetry. The `complete` event's `routing` block reports `llm` (advisory-call candidates, an overlap) alongside the mutually-exclusive outcome lanes `closed · human · postponed · in_flight`, and `model_calls_saved` — the per-case LLM calls this offline run avoided against production. A month-end mandate crunch routes ~0% to the model; an aged B2B book routes ~90%.
 
 **Measured:** 200 cases in ~3.1s · ~65 cases/sec · p95 ~280ms · 8 workers.
 

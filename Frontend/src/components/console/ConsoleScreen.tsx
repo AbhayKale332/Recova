@@ -11,6 +11,7 @@ import { CaseFilters, EMPTY_FILTERS, type CaseFilterState } from "@/components/s
 import { CasePanel } from "@/components/sim/CasePanel";
 import { CaseTable } from "@/components/sim/CaseTable";
 import { ProjectionPanel } from "@/components/sim/ProjectionPanel";
+import { RoutingBreakdown } from "@/components/sim/RoutingBreakdown";
 import { RunProgress } from "@/components/sim/RunProgress";
 import { ScenarioForm } from "@/components/sim/ScenarioForm";
 import { useI18n } from "@/lib/i18n";
@@ -130,6 +131,7 @@ export function ConsoleScreen() {
             <>
               <SummarySentence metrics={run.complete.metrics} />
               <ProjectionPanel complete={run.complete} />
+              <RoutingBreakdown complete={run.complete} />
               <FunnelBar
                 funnel={run.complete.funnel as unknown as Funnel}
                 selected={funnelSelection}

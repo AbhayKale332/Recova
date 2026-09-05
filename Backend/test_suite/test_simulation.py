@@ -16,7 +16,7 @@ from application .entities import TransactionState
 from application .helpers import IST
 from application .operations .compliance_rules import RBI_MAX_RETRIES ,VOICE_ATTEMPT_CAP
 from application .operations .reconciliation_service import compute_metrics
-from application .simulation import probability ,store
+from application .simulation import probability ,store ,triage
 from application .simulation .scenario import (
 SAMPLE_SCENARIOS ,
 CaseShape ,
@@ -94,6 +94,85 @@ def test_observations_move_the_prior ():
 
 def test_projection_of_an_empty_book_is_zero ():
     assert probability .project ([]).expected_inr ==0.0
+
+
+# ── Routing triage ───────────────────────────────────────────────────────────
+
+
+def _only_case (scenario :Scenario )->object :
+    return plan (scenario ,"run")[0 ]
+
+
+def test_a_clean_class1_case_stays_on_the_deterministic_path ():
+    """A rail timeout, routine amount, no reply to read - no model call warranted."""
+    case =_only_case (Scenario (
+    cases =CaseShape (count =1 ,class_mix ={1 :1 },amount_scale =0.01 ),
+    edge_cases =EdgeCases (reply_mix ={"silent":1.0 }),
+    ))
+    assert triage .assess (case ).needs_model is False
+
+
+def test_a_free_text_reply_the_screen_cannot_classify_needs_the_model ():
+    case =_only_case (Scenario (
+    cases =CaseShape (count =0 ),
+    custom_cases =[CustomCase (customer_name ="Asha",amount_inr =900 ,failure_class =1 ,
+    reply_text ="paise 5 tarikh ko aayenge, thoda adjust karlo")],
+    ))
+    need =triage .assess (case )
+    assert need .needs_model is True
+    assert triage .REASON_FREE_TEXT in need .reasons
+
+
+def test_a_clean_opt_out_is_handled_without_the_model ():
+    """The deterministic screen catches it, so no advisory call is warranted."""
+    case =_only_case (Scenario (
+    cases =CaseShape (count =0 ),
+    custom_cases =[CustomCase (customer_name ="Asha",amount_inr =900 ,failure_class =1 ,
+    reply_text ="band karo")],
+    ))
+    assert triage .assess (case ).needs_model is False
+
+
+def test_an_invoice_with_no_telemetry_and_high_value_needs_the_model ():
+    case =_only_case (Scenario (cases =CaseShape (count =1 ,class_mix ={4 :1 })))
+    need =triage .assess (case )
+    assert need .needs_model is True
+    assert triage .REASON_NO_TELEMETRY in need .reasons
+    assert triage .REASON_STAKES in need .reasons
+
+
+def test_the_last_available_retry_raises_the_case_to_the_model ():
+    case =_only_case (Scenario (
+    cases =CaseShape (count =1 ,class_mix ={1 :1 },amount_scale =0.01 ),
+    edge_cases =EdgeCases (reply_mix ={"silent":1.0 },retries_already_used =RBI_MAX_RETRIES -1 ),
+    ))
+    need =triage .assess (case )
+    assert need .needs_model is True
+    assert triage .REASON_GUARDRAIL in need .reasons
+
+
+def test_disposition_maps_each_final_state_to_one_lane ():
+    assert triage .disposition (TransactionLifecycleState .ESCALATED .value )==triage .LANE_HUMAN
+    assert triage .disposition (TransactionLifecycleState .WAITING .value )==triage .LANE_POSTPONED
+    assert triage .disposition (TransactionLifecycleState .RECOVERED .value )==triage .LANE_CLOSED
+    assert triage .disposition (TransactionLifecycleState .CANCELLED .value )==triage .LANE_CLOSED
+    assert triage .disposition (TransactionLifecycleState .INTERVENING .value )==triage .LANE_IN_FLIGHT
+
+
+def test_summarise_partitions_the_lanes_and_keeps_llm_outside_the_sum ():
+    entries =[
+    (True ,[triage .REASON_STAKES ],triage .LANE_HUMAN ),
+    (True ,[triage .REASON_STAKES ,triage .REASON_NO_TELEMETRY ],triage .LANE_CLOSED ),
+    (False ,[],triage .LANE_CLOSED ),
+    (False ,[],triage .LANE_POSTPONED ),
+    ]
+    summary =triage .summarise (entries ,live_diagnosis =False )
+
+    assert summary ["closed"]+summary ["human"]+summary ["postponed"]+summary ["in_flight"]==summary ["total"]==4
+    assert summary ["llm"]==2
+    assert summary ["deterministic_only"]==2
+    assert summary ["model_calls_saved"]==2 and summary ["model_calls_made"]==0
+    assert summary ["llm_reasons"][triage .REASON_STAKES ]==2
 
 
 # ── Scenario planning ────────────────────────────────────────────────────────
@@ -330,6 +409,13 @@ def test_a_run_streams_start_cases_and_a_complete (sim_db ):
     # Measured and modelled are reported as two separate figures on purpose.
     assert "recovered_inr"in complete and "projected_inr"in complete
     assert len (complete ["projected_band"])==2
+
+    # The routing split: outcome lanes partition the book, LLM sits alongside.
+    routing =complete ["routing"]
+    assert routing ["closed"]+routing ["human"]+routing ["postponed"]+routing ["in_flight"]==6
+    assert routing ["llm"]+routing ["deterministic_only"]==6
+    per_case =[data for name ,data in events if name =="case"]
+    assert all ("triage_lane"in c and "needs_model"in c for c in per_case )
 
 
 def test_quiet_hours_defer_the_whole_book_and_are_named (sim_db ):

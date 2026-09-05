@@ -62,7 +62,17 @@ Legend — **[V]** = what's on screen · **[VO]** = what you say · timings are 
 **[VO]**
 > Two hundred cases in about three seconds. That number in the corner is the money the engine actually drove to "recovered" — and if I change the inputs, it moves. You can't fake that in a live demo.
 
-### 1:55 – 2:20 · Three numbers, never summed
+### 1:48 – 2:02 · How many actually need the AI
+
+**[V]** Scroll to the **routing breakdown**. "Would use the model — 60, 30% of the book." Below it the lane bar: closed / with a human / postponed / in flight.
+**[VO]**
+> Of two hundred cases, sixty would go to the language model — the ambiguous invoices, the free-text replies, the high-value ones. The other 140 are pure deterministic code. This run made zero model calls and still produced every decision.
+
+**[V]** Switch the scenario to the aged B2B book, re-run. The number jumps to ~90%.
+**[VO]**
+> Change the book to overdue B2B invoices and it flips — ninety percent need a human-grade judgement call. The system knows which cases are worth spending a model on.
+
+### 2:02 – 2:20 · Three numbers, never summed
 
 **[V]** Projection panel: **Recovered** (measured, green) · **Projected** with a 95% band (blue) · **Deferred** (amber).
 

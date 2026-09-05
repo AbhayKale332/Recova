@@ -96,6 +96,27 @@ export const en = {
     failed: "Lost",
   },
 
+  routing: {
+    title: "How the book was handled",
+    subtitle:
+      "Who made the call on each case — deterministic code, the advisory model, or a person.",
+    llmLabel: "Would use the model",
+    llmHint:
+      "An advisory call is warranted: a free-text reply the screen can't classify, a diagnosis with no machine signal, high stakes, or a case one step from a guardrail.",
+    deterministicLabel: "Deterministic only",
+    deterministicHint: "Resolved by model-free code start to finish.",
+    savedNote: "{count} model calls avoided this run",
+    madeNote: "{count} model calls made",
+    overlapNote:
+      "Model use overlaps the lanes below — a case can consult the model and still close without a person.",
+    laneClosed: "Closed on its own",
+    laneHuman: "Escalated to a person",
+    lanePostponed: "Postponed",
+    laneInFlight: "Still in flight",
+    reasonsLabel: "Why cases went to the model",
+    share: "{pct} of the book",
+  },
+
   status: {
     PENDING: "Pending",
     DIAGNOSING: "Diagnosing",
