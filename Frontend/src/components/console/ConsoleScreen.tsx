@@ -92,33 +92,11 @@ export function ConsoleScreen() {
         aria-labelledby="scenario-heading"
         className="flex flex-col gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5"
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 id="scenario-heading" className="text-[15px] font-semibold tracking-tight">
-              {t.sim.title}
-            </h2>
-            <p className="mt-0.5 max-w-[64ch] text-[13px] text-[var(--muted)]">{t.sim.subtitle}</p>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            {running ? (
-              <button
-                type="button"
-                onClick={run.stop}
-                className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] font-medium"
-              >
-                {t.sim.stop}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={start}
-              disabled={running}
-              className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-[13px] font-semibold text-white transition-opacity duration-150 disabled:opacity-60"
-            >
-              {running ? t.sim.running : run.complete ? t.sim.again : t.sim.run}
-            </button>
-          </div>
+        <div className="min-w-0">
+          <h2 id="scenario-heading" className="text-[15px] font-semibold tracking-tight">
+            {t.sim.title}
+          </h2>
+          <p className="mt-0.5 max-w-[64ch] text-[13px] text-[var(--muted)]">{t.sim.subtitle}</p>
         </div>
 
         <ScenarioForm
@@ -198,6 +176,29 @@ export function ConsoleScreen() {
       ) : null}
 
       <CasePanel simCase={selectedCase} policy={policy} onClose={() => select(null)} />
+
+      {/* The run controls live at the bottom of the console: describe the book
+       * above, then run it from here. Sticky so it stays reachable while the
+       * scenario form and results scroll. */}
+      <div className="sticky bottom-0 z-20 -mx-3 mt-1 flex items-center justify-end gap-3 border-t border-[var(--border)] bg-[var(--bg)]/95 px-3 py-3 backdrop-blur sm:-mx-4 sm:px-4">
+        {running ? (
+          <button
+            type="button"
+            onClick={run.stop}
+            className="rounded-md border border-[var(--border)] px-4 py-2 text-[15px] font-medium"
+          >
+            {t.sim.stop}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={start}
+          disabled={running}
+          className="rounded-md bg-[var(--accent)] px-5 py-2 text-[15px] font-semibold text-white transition-opacity duration-150 disabled:opacity-60"
+        >
+          {running ? t.sim.running : run.complete ? t.sim.again : t.sim.run}
+        </button>
+      </div>
     </div>
   );
 }

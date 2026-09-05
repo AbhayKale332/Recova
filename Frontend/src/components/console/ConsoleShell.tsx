@@ -34,7 +34,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
     exact ? pathname === href : pathname.startsWith(href);
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[var(--bg)]">
+    <div className="big-ui flex min-h-dvh flex-col bg-[var(--bg)]">
       <a
         href="#console-main"
         className="sr-only-focusable focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:h-auto focus:w-auto focus:rounded focus:bg-[var(--surface)] focus:px-3 focus:py-2 focus:ring-1 focus:ring-[var(--accent)]"
@@ -43,7 +43,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
       </a>
 
       <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 sm:px-4">
+        <div className="mx-auto flex max-w-[1900px] flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 sm:px-4">
           <Link href="/" className="flex shrink-0 items-center gap-2">
             <span className="size-2 rounded-full bg-[var(--accent)]" aria-hidden />
             <span className="text-[15px] font-semibold tracking-tight">{t.brand.name}</span>
@@ -87,7 +87,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
         {/* Desktop nav sits under the summary; on mobile it moves to the bottom bar. */}
         <nav
           aria-label={t.nav.primary}
-          className="mx-auto hidden max-w-[1400px] gap-1 px-3 sm:px-4 md:flex"
+          className="mx-auto hidden max-w-[1900px] gap-1 px-3 sm:px-4 md:flex"
         >
           {DESTINATIONS.map((d) => {
             const active = isActive(d.href, d.exact);
@@ -111,7 +111,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 
       <main
         id="console-main"
-        className="mx-auto w-full max-w-[1400px] flex-1 px-3 pt-3 pb-24 sm:px-4 md:pb-8"
+        className="mx-auto w-full max-w-[1900px] flex-1 px-3 pt-3 pb-24 sm:px-4 md:pb-8"
       >
         {children}
       </main>

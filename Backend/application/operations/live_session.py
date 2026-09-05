@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -486,8 +487,14 @@ class LiveSession:
                 )
             if artifact is not None:
                 self.emit("artifact", artifact.as_dict())
-                if artifact.url and body and artifact.url not in body:
-                    body = f"{body}\n\n{artifact.url}"
+                if body:
+                    placeholder = re.compile(r"(?:https?://)?rzp\.io/i/[^\s.,!?]+")
+                    if artifact.url:
+                        body = placeholder.sub(artifact.url, body)
+                        if artifact.url not in body:
+                            body = f"{body}\n\n{artifact.url}"
+                    else:
+                        body = placeholder.sub("", body).strip()
             if body:
                 meta = {"ai_drafted": True}
                 if artifact is not None:

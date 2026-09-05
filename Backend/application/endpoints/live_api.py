@@ -65,6 +65,10 @@ def create_live_session(payload: CreateSessionBody, db: Session = Depends(get_db
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    if payload.custom_case:
+        reply_text = payload.custom_case.get("reply_text")
+        if isinstance(reply_text, str) and reply_text.strip():
+            session.reply(db, reply_text)
     return {"session_id": session.session_id, "transaction_id": session.transaction_id}
 
 

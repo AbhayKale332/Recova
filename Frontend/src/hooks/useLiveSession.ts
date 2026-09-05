@@ -225,7 +225,23 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
       const data = parse<ConversationMessage>((e as MessageEvent<string>).data);
       if (!data) return;
       setTyping(null);
-      setMessages((prev) => [...prev, data]);
+      setMessages((prev) => {
+        // A customer reply is rendered optimistically the moment it is sent
+        // (see `reply` below) with a negative sentinel id. When the backend
+        // echoes the persisted row back over SSE, swap the optimistic bubble
+        // for the real one instead of showing it twice.
+        if (data.direction === "INBOUND") {
+          const pending = prev.findIndex(
+            (m) => m.id < 0 && m.direction === "INBOUND" && m.body === data.body,
+          );
+          if (pending !== -1) {
+            const next = prev.slice();
+            next[pending] = data;
+            return next;
+          }
+        }
+        return [...prev, data];
+      });
       push({ kind: "message", at: Date.now(), data });
     });
 
@@ -327,6 +343,21 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
       const trimmed = text.trim();
       if (!sessionId || !trimmed) return;
       setSending(true);
+      // Show the customer's message immediately — don't wait for the backend
+      // round-trip (two model calls) and the SSE echo. The `message` listener
+      // reconciles this against the persisted row when it arrives.
+      const optimistic: ConversationMessage = {
+        id: -Date.now(),
+        channel: "WHATSAPP",
+        direction: "INBOUND",
+        sender: "CUSTOMER",
+        body: trimmed,
+        status: "SENT",
+        seq: -1,
+        meta: null,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, optimistic]);
       try {
         await api.replyLiveSession(sessionId, trimmed);
       } catch (caught) {

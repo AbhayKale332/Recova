@@ -40,7 +40,9 @@ def _context (db :Session ,txn :TransactionState )->tuple [str ,str ]:
 def _fallback (txn :TransactionState ,prompt :str ,locale :str ="en")->str :
     name =str ((txn .metadata_json or {}).get ("customer_name","there")).split ()[0 ]
     amount =f"₹{int (txn .amount_minor /100 ):,}"
-    link =f"rzp.io/i/{txn .transaction_id [-6 :]}"
+    # The live session grounds this copy with the URL from the minted payment
+    # artifact. Never invent a provider-looking URL in the draft.
+    link = "the secure payment link"
     if locale =="hi":
         return (
         f"नमस्ते {name }, आपके {amount } के लंबित भुगतान के बारे में याद दिला रहे हैं। "
