@@ -669,20 +669,6 @@ Recova/
 
 ---
 
-## ⚠️ Known limitations & debt
-
-| | |
-|---|---|
-| **No migrations** | `init_db()` runs `create_all` — only *missing* tables. An altered column won't apply. Alembic should own the schema once it stabilises. |
-| **`POST /admin/seed` wipes every table** | No auth; bypasses the append-only audit guards via bulk delete. Demo convenience, not production-safe. |
-| **`contracts/*.py` are unused** | Routers hand-build dicts, so FastAPI's OpenAPI schema for most endpoints is just `dict`. |
-| **`list_transactions` filters `archetype`/`q` in Python** | After loading all matching rows. Fine at ~200 rows, O(n) beyond. |
-| **The live-session queue is in-process** | Real concurrency, *not* a distributed system — don't describe it as one. |
-| **`.Agents/mcp.json` contains Razorpay *test* keys** | They're test-mode credentials, but they should still come out of source control before anything ships. |
-| **Part B (voice), Part C, Part D** | Progressively integrated; some flows are still scripted on the customer's side (the engine's decisions are always real code). |
-
----
-
 <div align="center">
 
 **Recova** — *detect · diagnose · intervene · bound · escalate · stop · audit · measure.*
