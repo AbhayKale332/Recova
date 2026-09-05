@@ -92,12 +92,23 @@ class Settings (BaseSettings ):
 
 
     vapi_api_key :str =""
+    vapi_public_key :str =""
+    vapi_assistant_id :str =""
+    vapi_phone_number_id :str =""
+    vapi_webhook_secret :str =""
+    vapi_allowed_numbers :str =""
 
     model_config =SettingsConfigDict (env_file =".env",extra ="ignore")
 
     @property
     def cors_origins_list (self )->list [str ]:
         return [origin .strip ()for origin in self .cors_origins .split (",")if origin .strip ()]
+
+    @property
+    def vapi_allowed_numbers_list (self )->list [str ]:
+        if not self .vapi_allowed_numbers :
+            return []
+        return [num .strip ()for num in self .vapi_allowed_numbers .split (",")if num .strip ()]
 
 
 settings =Settings ()

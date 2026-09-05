@@ -11,6 +11,7 @@
 *.pfx
 credentials.json
 service-account*.json
+.Agents/mcp.json
 
 # ---------- Python ----------
 __pycache__/

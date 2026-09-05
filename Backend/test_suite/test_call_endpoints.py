@@ -52,3 +52,22 @@ def test_call_log_lists_all_calls_newest_first (txn ):
 
 def test_call_log_404 (txn ):
     assert txn .get ("/api/v1/transactions/nope/calls").status_code ==404
+
+
+def test_start_call_quiet_hours_refusal_409_naming_trai_quiet_hours (txn ,db_session ):
+    resp =txn .post ("/api/v1/transactions/call_1/call/start?clock_ist=2026-03-04T21:40:00%2B05:30")
+    assert resp .status_code ==409
+    assert "TRAI_QUIET_HOURS" in resp .json ()["detail"]
+
+
+def test_start_call_voice_cap_refusal_409_naming_voice_attempt_cap (txn ,db_session ):
+    # First call at daytime (11:00 IST) succeeds
+    r1 =txn .post ("/api/v1/transactions/call_1/call/start?clock_ist=2026-03-04T11:00:00%2B05:30")
+    assert r1 .status_code ==201
+    # Second call at daytime succeeds (voice cap is 2)
+    r2 =txn .post ("/api/v1/transactions/call_1/call/start?clock_ist=2026-03-04T11:05:00%2B05:30")
+    assert r2 .status_code ==201
+    # Third call exceeds the cap -> 409 naming VOICE_ATTEMPT_CAP
+    r3 =txn .post ("/api/v1/transactions/call_1/call/start?clock_ist=2026-03-04T11:10:00%2B05:30")
+    assert r3 .status_code ==409
+    assert "VOICE_ATTEMPT_CAP" in r3 .json ()["detail"]

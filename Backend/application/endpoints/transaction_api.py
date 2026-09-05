@@ -2,6 +2,7 @@
 
 import json
 from collections import defaultdict
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter ,Depends ,HTTPException ,Query ,status
@@ -12,11 +13,14 @@ from sqlalchemy .orm import Session
 from application .persistence import get_db
 from application .constants import (
 ActionType ,
+InterventionAction ,
+InterventionChannel ,
 MessageDirection ,
 MessageSender ,
 MessageStatus ,
 NodeName ,
 Outcome ,
+StoppingRule ,
 TransactionLifecycleState ,
 )
 from application .entities import AuditTrail ,CallSession ,CallTurn ,Message ,TransactionState
@@ -25,7 +29,16 @@ from application .operations .conversation_service import build_call ,persona_fo
 from application .operations .message_drafter import draft_message
 from application .operations .escalation_service import enqueue_escalation
 from application .operations .live_recovery import run_recovery
-from application .helpers import utcnow
+from application .operations .compliance_rules import (
+VOICE_ATTEMPT_CAP ,
+is_within_quiet_hours ,
+retry_cap_exceeded ,
+voice_attempts_exhausted ,
+)
+from application .operations .voice_attempts import voice_attempt_count
+from application .operations .policy_guard import ProposedAction
+from application .operations import policy_repository
+from application .helpers import next_quiet_hours_end ,now_ist ,utcnow
 
 _SSE_HEADERS ={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"}
 
@@ -270,13 +283,122 @@ def list_calls (transaction_id :str ,db :Session =Depends (get_db ))->dict :
 
 
 @router .post ("/transactions/{transaction_id}/call/start",status_code =status .HTTP_201_CREATED )
-def start_call (transaction_id :str ,db :Session =Depends (get_db ))->dict :
+def start_call (
+transaction_id :str ,
+clock_ist :str |None =Query (default =None ),
+db :Session =Depends (get_db ),
+)->dict :
     """Start a voice-recovery call for a transaction.
 
-    Simulation keeps the endpoint deterministic while allowing a live provider to
-    replace the transcript source later without changing the response contract.
+    Gated by compliance rules (quiet hours -> retry cap -> voice cap) and PolicySandbox.
     """
     txn =_require_txn (db ,transaction_id )
+    clock =None 
+    if clock_ist :
+        try :
+            clock =datetime .fromisoformat (clock_ist )
+        except Exception :
+            clock =None 
+    if clock is None and txn .metadata_json and txn .metadata_json .get ("clock_ist"):
+        try :
+            clock =datetime .fromisoformat (txn .metadata_json ["clock_ist"])
+        except Exception :
+            clock =None 
+    if clock is None :
+        clock =now_ist ()
+
+    # Gate 1: TRAI quiet hours
+    if is_within_quiet_hours (clock ):
+        resume_at =next_quiet_hours_end (clock )
+        reason =f"Contact prohibited during TRAI quiet hours ({StoppingRule .TRAI_QUIET_HOURS .value }). Resume at {resume_at .strftime ('%H:%M')} IST."
+        record_audit (
+        db ,
+        transaction_id =transaction_id ,
+        node_name =NodeName .EXECUTE_INTERVENTION ,
+        action_type =ActionType .RETRY_SCHEDULED ,
+        payload ={
+        "stopping_rule":StoppingRule .TRAI_QUIET_HOURS .value ,
+        "reason":reason ,
+        "scheduled_for":resume_at .isoformat (),
+        "deferred_action":InterventionAction .VOICE_CALL .value ,
+        },
+        outcome =Outcome .SUCCESS ,
+        )
+        db .commit ()
+        raise HTTPException (status_code =status .HTTP_409_CONFLICT ,detail =reason )
+
+    # Gate 2: RBI retry cap
+    if retry_cap_exceeded (int (txn .retry_count ),int (txn .max_retries or 3 )):
+        reason =f"RBI retry cap reached ({txn .retry_count } of {txn .max_retries } retries) ({StoppingRule .RBI_MAX_RETRIES .value })."
+        record_audit (
+        db ,
+        transaction_id =transaction_id ,
+        node_name =NodeName .EXECUTE_INTERVENTION ,
+        action_type =ActionType .STATE_TRANSITION ,
+        payload ={
+        "stopping_rule":StoppingRule .RBI_MAX_RETRIES .value ,
+        "reason":reason ,
+        },
+        outcome =Outcome .FAILURE ,
+        )
+        db .commit ()
+        raise HTTPException (status_code =status .HTTP_409_CONFLICT ,detail =reason )
+
+    # Gate 3: Voice attempt cap
+    attempts =voice_attempt_count (db ,transaction_id )
+    if voice_attempts_exhausted (attempts ):
+        reason =f"Voice attempt cap reached ({attempts } of {VOICE_ATTEMPT_CAP } calls in 72 hours) ({StoppingRule .VOICE_ATTEMPT_CAP .value })."
+        record_audit (
+        db ,
+        transaction_id =transaction_id ,
+        node_name =NodeName .EXECUTE_INTERVENTION ,
+        action_type =ActionType .STATE_TRANSITION ,
+        payload ={
+        "stopping_rule":StoppingRule .VOICE_ATTEMPT_CAP .value ,
+        "reason":reason ,
+        },
+        outcome =Outcome .FAILURE ,
+        )
+        db .commit ()
+        raise HTTPException (status_code =status .HTTP_409_CONFLICT ,detail =reason )
+
+    # Gate 4: PolicySandbox validate
+    action =ProposedAction (
+    action =InterventionAction .VOICE_CALL ,
+    channel =InterventionChannel .VOICE ,
+    amount_minor =txn .amount_minor ,
+    )
+    decision =policy_repository .sandbox_for (db ).validate (action )
+    if not decision .approved :
+        enqueue_escalation (db ,transaction_id =transaction_id ,reason =decision .reason )
+        record_audit (
+        db ,
+        transaction_id =transaction_id ,
+        node_name =NodeName .EXECUTE_INTERVENTION ,
+        action_type =ActionType .ESCALATION ,
+        payload ={
+        "policy_block":decision .reason ,
+        "action":action .action_value ,
+        "channel":action .channel_value ,
+        },
+        outcome =Outcome .ESCALATED ,
+        )
+        db .commit ()
+        raise HTTPException (status_code =status .HTTP_409_CONFLICT ,detail =decision .reason )
+
+    # Approved: record intervention dispatch audit
+    record_audit (
+    db ,
+    transaction_id =transaction_id ,
+    node_name =NodeName .EXECUTE_INTERVENTION ,
+    action_type =ActionType .INTERVENTION_DISPATCH ,
+    payload ={
+    "action":action .action_value ,
+    "channel":action .channel_value ,
+    },
+    outcome =Outcome .SUCCESS ,
+    )
+
     meta =txn .metadata_json or {}
     beat =build_call (
     failure_class =int (txn .failure_class ),

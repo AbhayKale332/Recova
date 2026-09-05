@@ -47,6 +47,42 @@ def test_voice_stays_simulated_without_vapi_key ():
     result =adapter .call (to ="+919999999999",script ="namaste")
     assert result .simulated is True
     assert result .channel =="VOICE"
+    assert result .detail =="vapi_not_configured"
+
+
+def test_voice_number_outside_allowlist_falls_back_to_simulated ():
+    adapter =VoiceAdapter (
+    live_mode =True ,
+    api_key ="vapi_test_key",
+    allowed_numbers =["+919876543210"],
+    )
+    result =adapter .call (to ="+919999999999",script ="namaste")
+    assert result .simulated is True
+    assert result .channel =="VOICE"
+    assert result .detail =="number_not_allowlisted"
+
+
+def test_voice_allowlisted_number_dispatches_live ():
+    class _MockVapiClient :
+        @staticmethod 
+        def post (url ,json ,headers ):
+            class _Resp :
+                status_code =201 
+                @staticmethod 
+                def json ():
+                    return {"id":"call_vapi_123"}
+            return _Resp ()
+
+    adapter =VoiceAdapter (
+    live_mode =True ,
+    api_key ="vapi_test_key",
+    allowed_numbers =["+919999999999"],
+    client =_MockVapiClient (),
+    )
+    result =adapter .call (to ="+919999999999",script ="namaste")
+    assert result .delivered is True 
+    assert result .simulated is False 
+    assert result .reference =="call_vapi_123"
 
 
 def test_razorpay_sim_payment_link_has_reference ():

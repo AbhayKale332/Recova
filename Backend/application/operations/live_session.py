@@ -53,6 +53,7 @@ from application.operations.reconciliation_service import compute_metrics
 from application.operations.wire import _ser_msg
 from application.simulation.scenario import CaseShape, CustomCase, Scenario, plan, to_transaction
 from application.settings import settings
+from application.operations.voice_agent import build_assistant
 
 
 Event = tuple[str, dict[str, Any]]
@@ -363,13 +364,23 @@ class LiveSession:
                     status=CallStatus.RINGING,
                     duration_sec=0,
                     outcome=None,
-                    provider="vapi-stub",
+                    provider="vapi",
                 )
                 db.add(call)
                 db.commit()
                 db.refresh(call)
                 self.call_session_id = call.id
-                self.emit("call_offer", {"assistant": None, "public_key": None, "call_session_id": call.id})
+                txn = self._txn(db)
+                b = _bounds(db, txn)
+                assistant = build_assistant(txn, self.locale, b, db=db)
+                self.emit(
+                    "call_offer",
+                    {
+                        "assistant": assistant,
+                        "public_key": settings.vapi_public_key or None,
+                        "call_session_id": call.id,
+                    },
+                )
             return
 
         if body and decision.allowed and decision.tool in {AgentTool.STOP, AgentTool.HANDOFF_TO_HUMAN}:
@@ -503,19 +514,22 @@ class LiveSession:
     def call_web(self, db: Session) -> dict[str, Any]:
         if self.last_decision is None or self.last_decision.tool != AgentTool.VOICE_CALL or not self.last_decision.allowed:
             raise ValueError("A permitted VOICE_CALL decision is required before opening the web call.")
+        txn = self._txn(db)
+        b = _bounds(db, txn)
+        assistant = build_assistant(txn, self.locale, b, db=db)
         return {
             "allowed": True,
             "provider": "vapi",
             "gated": True,
-            "assistant": None,
-            "public_key": None,
+            "assistant": assistant,
+            "public_key": settings.vapi_public_key or None,
             "call_session_id": self.call_session_id,
-            "reason": "Vapi web-call configuration is reserved for Part 6.",
+            "reason": "Vapi web-call configuration active.",
         }
 
     def ingest_turn(self, db: Session, speaker: str, text: str, at_offset_sec: int = 0) -> dict[str, Any]:
         if self.call_session_id is None:
-            call = CallSession(transaction_id=self.transaction_id, status=CallStatus.IN_PROGRESS, provider="vapi-stub")
+            call = CallSession(transaction_id=self.transaction_id, status=CallStatus.IN_PROGRESS, provider="vapi")
             db.add(call)
             db.commit()
             db.refresh(call)
@@ -527,6 +541,12 @@ class LiveSession:
         count = db.query(CallTurn).filter_by(call_session_id=self.call_session_id).count()
         turn = CallTurn(call_session_id=self.call_session_id, speaker=who, text=text, seq=count, at_offset_sec=at_offset_sec)
         db.add(turn)
+        call = db.query(CallSession).filter_by(id=self.call_session_id).first()
+        if call:
+            if call.status == CallStatus.RINGING:
+                call.status = CallStatus.IN_PROGRESS
+            if at_offset_sec > (call.duration_sec or 0):
+                call.duration_sec = at_offset_sec
         db.commit()
         return {"call_session_id": self.call_session_id, "speaker": who.value, "text": text, "seq": count}
 
