@@ -140,17 +140,103 @@ export interface SimCase {
   elapsed_ms: number;
 }
 
-/** Deterministic explanation of the model route shown in a case panel. */
+/**
+ * Deterministic explanation of the model route shown in a case panel.
+ * `provider: "deterministic"` marks a seeded route that never called a model
+ * — used by the live theatre to distinguish a planned opening from a taken one.
+ */
 export interface RouteDecision {
   task: string;
   tier: "nano" | "mini" | "full";
-  provider: "openai" | "gemini";
+  provider: "openai" | "gemini" | "deterministic";
   model: string;
   reason: string;
   raised_by: string[];
   escalated_from: string | null;
   latency_ms: number;
   tokens: number | null;
+}
+
+/* ── Live theatre (backend/application/operations/live_session.py) ──────── */
+
+export interface LiveStart {
+  transaction_id: string;
+  failure_class: number;
+  amount_inr: number;
+  customer_name: string;
+}
+
+export interface LiveDiagnosis {
+  root_cause: string;
+  playbook: string;
+  confidence: number;
+}
+
+/** `phase` is "flagged" on open and "stopped" | "escalated" when a screened
+ * reply (opt-out / dispute) ends the session before any model is consulted. */
+export interface LiveStep {
+  phase: string;
+  label?: string;
+  rule?: string;
+}
+
+/**
+ * Wire shape of `AgentDecision.as_dict()` (backend/application/operations/agent_tools.py).
+ * `requested_tool` differing from `tool` is the sandbox's refusal made visible:
+ * the model asked for `requested_tool`, the sandbox said no via `sandbox_reason`
+ * (verbatim, user-facing copy), and `tool` is what actually happened instead.
+ */
+export interface LiveDecision {
+  tool: string;
+  action: string | null;
+  channel: string | null;
+  terminal_state: string | null;
+  allowed: boolean;
+  reason: string;
+  stopping_rule: string | null;
+  route_decision: RouteDecision;
+  model_reason: string;
+  sandbox_reason: string | null;
+  message: string | null;
+  discount_pct: number | null;
+  requested_tool: string | null;
+  scheduled_for: string | null;
+}
+
+export interface LiveCallOffer {
+  assistant: unknown;
+  public_key: string | null;
+  call_session_id: number | null;
+}
+
+/**
+ * Wire shape of `live_session._bounds()`. Matches `Bounds` in lib/bounds.ts
+ * field for field except `nextActionAt`, which travels as an ISO string —
+ * parsed once, in useLiveSession, at the boundary.
+ */
+export interface LiveBoundsWire {
+  retries: { used: number; cap: number; exhausted: boolean };
+  voice: { used: number; cap: number; exhausted: boolean };
+  totalDispatches: number;
+  channelsAllowed: string[];
+  channelsUsed: string[];
+  channelsRemaining: string[];
+  armedRule: string | null;
+  firedRule: string | null;
+  nextActionAt: string | null;
+  inQuietHours: boolean;
+  closed: boolean;
+}
+
+/** POST /live/sessions/{id}/call/web — gated Vapi config, reserved for Part 6. */
+export interface LiveCallWebConfig {
+  allowed: boolean;
+  provider: string;
+  gated: boolean;
+  assistant: unknown;
+  public_key: string | null;
+  call_session_id: number | null;
+  reason: string;
 }
 
 export interface Throughput {

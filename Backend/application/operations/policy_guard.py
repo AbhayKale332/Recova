@@ -87,7 +87,7 @@ class PolicySandbox :
         ):
             return Decision (
             False ,
-            f"Amount {action .amount_minor } exceeds the {self ._max_amount_minor } policy ceiling.",
+            f"Amount ₹{action .amount_minor /100 :,.0f} exceeds the ₹{self ._max_amount_minor /100 :,.0f} policy ceiling.",
             )
 
         return Decision (True ,"Action approved by the configured policy.")

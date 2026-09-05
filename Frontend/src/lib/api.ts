@@ -29,7 +29,14 @@ import type {
   TransactionRow,
 } from "@/lib/types";
 import type { Locale } from "@/lib/i18n/dictionaries/en";
-import type { RouteDecision, SavedScenario, Scenario, ScenarioPreset } from "@/lib/simulation";
+import type {
+  CustomCase,
+  LiveCallWebConfig,
+  RouteDecision,
+  SavedScenario,
+  Scenario,
+  ScenarioPreset,
+} from "@/lib/simulation";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, "") ?? "http://localhost:8000";
@@ -324,6 +331,35 @@ export const api = {
       "DELETE",
       `/simulate/runs/${encodeURIComponent(runId)}`,
     ),
+
+  /* ── Live theatre (Part 4) ───────────────────────────────────────────── */
+
+  createLiveSession: (body: { custom_case?: CustomCase; transaction_id?: string; locale?: Locale }) =>
+    post<{ session_id: string; transaction_id: string }>("/live/sessions", body),
+
+  replyLiveSession: (id: string, text: string) =>
+    post<{ session_id: string; final_state: LifecycleStatus }>(
+      `/live/sessions/${encodeURIComponent(id)}/reply`,
+      { text },
+    ),
+
+  callWebLiveSession: (id: string) =>
+    post<LiveCallWebConfig>(`/live/sessions/${encodeURIComponent(id)}/call/web`),
+
+  ingestLiveCallTurn: (
+    id: string,
+    body: { speaker: string; text: string; at_offset_sec?: number },
+  ) =>
+    post<{ call_session_id: number; speaker: string; text: string; seq: number }>(
+      `/live/sessions/${encodeURIComponent(id)}/turns`,
+      body,
+    ),
+
+  deleteLiveSession: (id: string) =>
+    request<{ session_id: string; deleted: boolean }>(
+      "DELETE",
+      `/live/sessions/${encodeURIComponent(id)}`,
+    ),
 };
 
 /**
@@ -412,3 +448,8 @@ export function runStreamUrl(id: string, locale: Locale): string {
 
 /** The most a single recover-batch call accepts (backend Field max_length). */
 export const BATCH_LIMIT = 50;
+
+/** The SSE URL for one live session. Consumed by useLiveSession. */
+export function liveSessionStreamUrl(sessionId: string): string {
+  return `${ROOT}/live/sessions/${encodeURIComponent(sessionId)}/stream`;
+}

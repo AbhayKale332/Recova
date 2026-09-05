@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy .orm import Session
 
+from application .integrations .razorpay_mcp import default_client ,mcp_dispatch_enabled
 from application .settings import settings
 from application .constants import (
 ActionType ,
@@ -51,6 +52,25 @@ def _remember_link_id (txn :TransactionState ,ref :str |None )->None :
     txn .metadata_json =meta
 
 
+def _mcp_link (txn :TransactionState )->tuple [str |None ,str |None ]|None :
+    if not mcp_dispatch_enabled ():
+        return None
+    try :
+        result =default_client ().create_payment_link (
+        amount_minor =int (txn .amount_minor ),currency =txn .currency or "INR",
+        contact =txn .customer_contact ,description =f"Payment recovery for {txn .transaction_id }",
+        transaction_id =txn .transaction_id ,merchant_id =txn .merchant_id ,failure_class =int (txn .failure_class ),
+        )
+    except Exception :
+        return None
+    if not result or not result .get ("id"):
+        return None
+    url =result .get ("short_url")or result .get ("image_url")or result .get ("qr_code")or result .get ("url")
+    if not url:
+        return None
+    return str (url ),str (result ["id"])
+
+
 def create_payment_link (db :Session ,transaction_id :str ,*,client =None )->dict :
     txn =db .query (TransactionState ).filter_by (transaction_id =transaction_id ).first ()
     if txn is None :
@@ -58,8 +78,17 @@ def create_payment_link (db :Session ,transaction_id :str ,*,client =None )->dic
 
     url :str |None =None
     ref :str |None =None
+    detail ="simulated"
     have_keys =bool (settings .razorpay_key_id and settings .razorpay_key_secret )
-    if client is None and have_keys :
+    if client is None :
+        try :
+            mcp_result =_mcp_link (txn )
+        except Exception :
+            mcp_result =None
+        if mcp_result is not None :
+            url ,ref =mcp_result
+            detail ="mcp"
+    if client is None and not url and have_keys :
         try :
             client =_build_client ()
         except Exception :
@@ -67,11 +96,14 @@ def create_payment_link (db :Session ,transaction_id :str ,*,client =None )->dic
     if client is not None :
         try :
             url ,ref =_create_link (txn ,client )
+            detail ="sdk"
         except Exception :
             url ,ref =None ,None
+            detail ="simulated"
 
     simulated =not url
     if simulated :
+        detail ="simulated"
         url =f"https://rzp.io/i/{transaction_id [-6 :]}"
         ref =f"sim_{transaction_id [-6 :]}"
 
@@ -96,12 +128,12 @@ def create_payment_link (db :Session ,transaction_id :str ,*,client =None )->dic
     body =body ,
     status =MessageStatus .SENT ,
     seq =next_seq ,
-    meta_json ={"payment_link":url ,"razorpay_id":ref ,"simulated":simulated ,"manual":True },
+    meta_json ={"payment_link":url ,"razorpay_id":ref ,"simulated":simulated ,"manual":True ,"detail":detail },
     )
     db .add (msg )
     db .commit ()
     db .refresh (msg )
-    return {"url":url ,"razorpay_id":ref ,"simulated":simulated ,"message":msg }
+    return {"url":url ,"razorpay_id":ref ,"simulated":simulated ,"detail":detail ,"message":msg }
 
 
 def _add_system_beat (db :Session ,transaction_id :str ,text :str )->None :
@@ -139,12 +171,22 @@ def payment_link_status (db :Session ,transaction_id :str ,*,client =None )->dic
         return {"paid":already ,"status":"recovered"if already else "no_link",
         "current_state":txn .current_state .value }
 
-    if client is None and settings .razorpay_key_id and settings .razorpay_key_secret :
+    status_str ="unknown"
+    mcp_handled =False
+    if client is None and mcp_dispatch_enabled ():
+        try :
+            mcp_status =default_client ().fetch_payment_link (link_id )
+        except Exception :
+            mcp_status =None
+        if mcp_status is not None :
+            status_str =str (mcp_status .get ("status","unknown"))
+            mcp_handled =True
+
+    if client is None and not mcp_handled and settings .razorpay_key_id and settings .razorpay_key_secret :
         try :
             client =_build_client ()
         except Exception :
             client =None
-    status_str ="unknown"
     if client is not None :
         try :
             status_str =(client .payment_link .fetch (link_id )or {}).get ("status","unknown")

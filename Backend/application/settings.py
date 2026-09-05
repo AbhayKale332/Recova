@@ -27,6 +27,14 @@ class Settings (BaseSettings ):
     razorpay_key_id :str =""
     razorpay_key_secret :str =""
     razorpay_webhook_secret :str =""
+    # Opt into the server-side Razorpay MCP dispatch transport explicitly.
+    razorpay_mcp_enabled :bool =False
+    # Official hosted Razorpay MCP endpoint; Streamable HTTP is preferred.
+    razorpay_mcp_url :str ="https://mcp.razorpay.com/mcp"
+    # Keep the remote transport restricted to test keys unless an operator explicitly overrides it.
+    razorpay_mcp_allow_live_keys :bool =False
+    # Hard wall-clock limit for one MCP connection/call attempt.
+    razorpay_mcp_timeout_s :float =5.0
 
 
 

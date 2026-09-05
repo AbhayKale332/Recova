@@ -352,6 +352,7 @@ def create_payment_link_route (transaction_id :str ,db :Session =Depends (get_db
     "url":result ["url"],
     "razorpay_id":result ["razorpay_id"],
     "simulated":result ["simulated"],
+    "detail":result ["detail"],
     "message":_serialize_message (result ["message"]),
     }
 

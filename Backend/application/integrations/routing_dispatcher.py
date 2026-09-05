@@ -43,7 +43,7 @@ def build_dispatcher (db :Session ,live_mode :bool |None =None )->Callable [[Pro
             case InterventionAction .VOICE_CALL .value :
                 return voice .call (to =to ,script =_VOICE_SCRIPT )
             case InterventionAction .GENERATE_PAYMENT_LINK .value :
-                return razorpay .create_payment_link (amount_minor =amount ,contact =to )
+                return razorpay .create_payment_link (amount_minor =amount ,contact =to ,failure_class =int (txn .failure_class ))
             case InterventionAction .RETRY_CHARGE .value :
                 return razorpay .retry_charge (transaction_id =txn .transaction_id )
             case InterventionAction .CANCEL_SUBSCRIPTION .value :

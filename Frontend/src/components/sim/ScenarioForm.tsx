@@ -102,7 +102,86 @@ export function ScenarioForm({
         </fieldset>
       ) : null}
 
-      <Group title={t.sim.groupCases} defaultOpen>
+      <Group title={t.sim.groupCustom} defaultOpen>
+        <CaseBuilder cases={scenario.custom_cases} onChange={setCustomCases} disabled={disabled} />
+
+        <Field label={t.sim.amountBounds} hint={t.sim.amountBoundsHint}>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-[12px]">
+              <input
+                type="checkbox"
+                checked={scenario.cases.amount_min_inr !== null}
+                disabled={disabled}
+                onChange={(event) => setCases({ amount_min_inr: event.target.checked ? 1000 : null })}
+              />
+              {t.sim.amountMin}
+            </label>
+            {scenario.cases.amount_min_inr !== null ? (
+              <NumberInput value={scenario.cases.amount_min_inr} min={1} max={100000000} step={100} suffix="₹" disabled={disabled} onChange={(amount_min_inr) => setCases({ amount_min_inr })} />
+            ) : null}
+            <label className="flex items-center gap-1.5 text-[12px]">
+              <input
+                type="checkbox"
+                checked={scenario.cases.amount_max_inr !== null}
+                disabled={disabled}
+                onChange={(event) => setCases({ amount_max_inr: event.target.checked ? 100000 : null })}
+              />
+              {t.sim.amountMax}
+            </label>
+            {scenario.cases.amount_max_inr !== null ? (
+              <NumberInput value={scenario.cases.amount_max_inr} min={1} max={100000000} step={100} suffix="₹" disabled={disabled} onChange={(amount_max_inr) => setCases({ amount_max_inr })} />
+            ) : null}
+          </div>
+        </Field>
+
+        <label className="flex items-start gap-2 rounded-md bg-[var(--accent-wash)] px-3 py-2 text-[12px]">
+          <input
+            type="checkbox"
+            checked={scenario.live_diagnosis}
+            disabled={disabled}
+            onChange={(event) => onChange({ ...scenario, live_diagnosis: event.target.checked })}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="block font-medium">{t.sim.liveDiagnosis}</span>
+            <span className="block text-[11px] text-[var(--muted)]">{t.sim.liveDiagnosisHint}</span>
+          </span>
+        </label>
+
+        <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={onSaveScenario} disabled={disabled || !onSaveScenario} className="rounded-md bg-[var(--accent)] px-2.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50">
+              {t.sim.saveScenario}
+            </button>
+            <button type="button" onClick={copyShareLink} disabled={disabled} className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[12px] font-medium disabled:opacity-50">
+              {copied ? t.sim.linkCopied : t.sim.copyLink}
+            </button>
+            <span className="text-[11px] text-[var(--muted)]">{t.sim.shareHint}</span>
+          </div>
+          {savedScenarios.length ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                defaultValue=""
+                disabled={disabled}
+                onChange={(event) => {
+                  const saved = savedScenarios.find((item) => item.slug === event.target.value);
+                  if (saved) onSavedScenario?.(saved);
+                  event.target.value = "";
+                }}
+                className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[12px]"
+              >
+                <option value="">{t.sim.savedScenarios}</option>
+                {savedScenarios.map((saved) => <option key={saved.slug} value={saved.slug}>{saved.name}</option>)}
+              </select>
+              {savedScenarios.map((saved) => (
+                <button key={saved.slug} type="button" onClick={() => onDeleteScenario?.(saved.slug)} disabled={disabled} aria-label={`${t.sim.delete} ${saved.name}`} className="rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--lost)] disabled:opacity-50">× {saved.name}</button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </Group>
+
+      <Group title={t.sim.groupCases}>
         <Field label={t.sim.scenarioName} hint="">
           <input
             value={scenario.name}
@@ -321,85 +400,6 @@ export function ScenarioForm({
             })}
           </div>
         </Field>
-      </Group>
-
-      <Group title={t.sim.groupCustom}>
-        <CaseBuilder cases={scenario.custom_cases} onChange={setCustomCases} disabled={disabled} />
-
-        <Field label={t.sim.amountBounds} hint={t.sim.amountBoundsHint}>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-1.5 text-[12px]">
-              <input
-                type="checkbox"
-                checked={scenario.cases.amount_min_inr !== null}
-                disabled={disabled}
-                onChange={(event) => setCases({ amount_min_inr: event.target.checked ? 1000 : null })}
-              />
-              {t.sim.amountMin}
-            </label>
-            {scenario.cases.amount_min_inr !== null ? (
-              <NumberInput value={scenario.cases.amount_min_inr} min={1} max={100000000} step={100} suffix="₹" disabled={disabled} onChange={(amount_min_inr) => setCases({ amount_min_inr })} />
-            ) : null}
-            <label className="flex items-center gap-1.5 text-[12px]">
-              <input
-                type="checkbox"
-                checked={scenario.cases.amount_max_inr !== null}
-                disabled={disabled}
-                onChange={(event) => setCases({ amount_max_inr: event.target.checked ? 100000 : null })}
-              />
-              {t.sim.amountMax}
-            </label>
-            {scenario.cases.amount_max_inr !== null ? (
-              <NumberInput value={scenario.cases.amount_max_inr} min={1} max={100000000} step={100} suffix="₹" disabled={disabled} onChange={(amount_max_inr) => setCases({ amount_max_inr })} />
-            ) : null}
-          </div>
-        </Field>
-
-        <label className="flex items-start gap-2 rounded-md bg-[var(--accent-wash)] px-3 py-2 text-[12px]">
-          <input
-            type="checkbox"
-            checked={scenario.live_diagnosis}
-            disabled={disabled}
-            onChange={(event) => onChange({ ...scenario, live_diagnosis: event.target.checked })}
-            className="mt-0.5"
-          />
-          <span>
-            <span className="block font-medium">{t.sim.liveDiagnosis}</span>
-            <span className="block text-[11px] text-[var(--muted)]">{t.sim.liveDiagnosisHint}</span>
-          </span>
-        </label>
-
-        <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={onSaveScenario} disabled={disabled || !onSaveScenario} className="rounded-md bg-[var(--accent)] px-2.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50">
-              {t.sim.saveScenario}
-            </button>
-            <button type="button" onClick={copyShareLink} disabled={disabled} className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[12px] font-medium disabled:opacity-50">
-              {copied ? t.sim.linkCopied : t.sim.copyLink}
-            </button>
-            <span className="text-[11px] text-[var(--muted)]">{t.sim.shareHint}</span>
-          </div>
-          {savedScenarios.length ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                defaultValue=""
-                disabled={disabled}
-                onChange={(event) => {
-                  const saved = savedScenarios.find((item) => item.slug === event.target.value);
-                  if (saved) onSavedScenario?.(saved);
-                  event.target.value = "";
-                }}
-                className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[12px]"
-              >
-                <option value="">{t.sim.savedScenarios}</option>
-                {savedScenarios.map((saved) => <option key={saved.slug} value={saved.slug}>{saved.name}</option>)}
-              </select>
-              {savedScenarios.map((saved) => (
-                <button key={saved.slug} type="button" onClick={() => onDeleteScenario?.(saved.slug)} disabled={disabled} aria-label={`${t.sim.delete} ${saved.name}`} className="rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--lost)] disabled:opacity-50">× {saved.name}</button>
-              ))}
-            </div>
-          ) : null}
-        </div>
       </Group>
 
       <p className="tabular text-[12px] text-[var(--muted)]">

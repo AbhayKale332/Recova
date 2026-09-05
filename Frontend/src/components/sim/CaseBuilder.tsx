@@ -1,7 +1,12 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
 import { ClassChip } from "@/components/ClassChip";
 import { Money } from "@/components/Money";
+import { useToast } from "@/components/Toast";
+import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { FAILURE_CLASSES } from "@/lib/failure-classes";
 import { Field, NumberInput } from "@/components/sim/FormPrimitives";
@@ -29,7 +34,10 @@ export function CaseBuilder({
   onChange: (cases: CustomCase[]) => void;
   disabled: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const router = useRouter();
+  const toast = useToast();
+  const [launching, setLaunching] = useState<number | null>(null);
 
   const update = (index: number, patch: Partial<CustomCase>) => {
     onChange(cases.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
@@ -39,6 +47,17 @@ export function CaseBuilder({
   const duplicate = (index: number) =>
     onChange([...cases.slice(0, index + 1), { ...cases[index] }, ...cases.slice(index + 1)]);
   const remove = (index: number) => onChange(cases.filter((_, itemIndex) => itemIndex !== index));
+
+  const runLive = async (index: number, item: CustomCase) => {
+    setLaunching(index);
+    try {
+      const { session_id } = await api.createLiveSession({ custom_case: item, locale });
+      router.push(`/live?case=${encodeURIComponent(session_id)}`);
+    } catch (error) {
+      toast.failure(t.sim.runLiveFailed, error instanceof Error ? error.message : String(error));
+      setLaunching(null);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -123,6 +142,9 @@ export function CaseBuilder({
                     <td className="p-2 align-top"><NumberInput value={item.days_overdue ?? 0} min={0} max={365} suffix={t.sim.days} disabled={disabled} onChange={(days_overdue) => update(index, { days_overdue })} /></td>
                     <td className="p-2 align-top">
                       <div className="flex gap-1">
+                        <button type="button" onClick={() => runLive(index, item)} disabled={disabled || launching !== null} className="rounded border border-[var(--accent)] px-2 py-1 font-semibold text-[var(--accent-ink)] hover:bg-[var(--accent-wash)] disabled:opacity-50">
+                          {launching === index ? "…" : t.sim.runLive}
+                        </button>
                         <button type="button" onClick={() => duplicate(index)} disabled={disabled} className="rounded border border-[var(--border)] px-2 py-1 hover:border-[var(--accent)] disabled:opacity-50">{t.sim.duplicate}</button>
                         <button type="button" onClick={() => remove(index)} disabled={disabled} className="rounded border border-[var(--border)] px-2 py-1 text-[var(--lost)] hover:border-[var(--lost)] disabled:opacity-50">{t.sim.delete}</button>
                       </div>
@@ -165,6 +187,9 @@ export function CaseBuilder({
                   <Field label={t.sim.daysOverdue} hint=""><NumberInput value={item.days_overdue ?? 0} min={0} max={365} disabled={disabled} onChange={(days_overdue) => update(index, { days_overdue })} /></Field>
                 </div>
                 <div className="flex justify-end gap-1">
+                  <button type="button" onClick={() => runLive(index, item)} disabled={disabled || launching !== null} className="rounded border border-[var(--accent)] px-2 py-1 text-[12px] font-semibold text-[var(--accent-ink)] hover:bg-[var(--accent-wash)] disabled:opacity-50">
+                    {launching === index ? "…" : t.sim.runLive}
+                  </button>
                   <button type="button" onClick={() => duplicate(index)} disabled={disabled} className="rounded border border-[var(--border)] px-2 py-1 text-[12px] hover:border-[var(--accent)] disabled:opacity-50">{t.sim.duplicate}</button>
                   <button type="button" onClick={() => remove(index)} disabled={disabled} className="rounded border border-[var(--border)] px-2 py-1 text-[12px] text-[var(--lost)] hover:border-[var(--lost)] disabled:opacity-50">{t.sim.delete}</button>
                 </div>

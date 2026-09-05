@@ -21,6 +21,7 @@ router = APIRouter(prefix="/live/sessions", tags=["live"])
 class CreateSessionBody(BaseModel):
     custom_case: dict[str, Any] | None = None
     transaction_id: str | None = None
+    locale: str = "en"
 
     @model_validator(mode="after")
     def _one_source(self) -> "CreateSessionBody":
@@ -49,7 +50,12 @@ def _require(session_id: str):
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_live_session(payload: CreateSessionBody, db: Session = Depends(get_db)) -> dict[str, str]:
     try:
-        session = create_session(db, custom_case=payload.custom_case, transaction_id=payload.transaction_id)
+        session = create_session(
+            db,
+            custom_case=payload.custom_case,
+            transaction_id=payload.transaction_id,
+            locale=payload.locale,
+        )
     except LookupError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
     except ValueError as exc:

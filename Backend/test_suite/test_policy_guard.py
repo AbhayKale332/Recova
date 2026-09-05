@@ -61,6 +61,21 @@ def test_blocks_amount_above_ceiling ():
     assert decision .approved is False
 
 
+def test_amount_ceiling_message_is_rupees_not_paise ():
+    # The theatre renders this sentence verbatim (DecisionCard); it must read
+    # ₹48,000, not the raw paise figure 4800000.
+    action =ProposedAction (
+    action =InterventionAction .GENERATE_PAYMENT_LINK ,
+    channel =InterventionChannel .PAYMENT_LINK ,
+    amount_minor =4_800_000 ,
+    )
+    decision =_sandbox ().validate (action )
+    assert decision .approved is False
+    assert decision .reason =="Amount ₹48,000 exceeds the ₹10,000 policy ceiling."
+    assert "4800000"not in decision .reason
+    assert "1000000"not in decision .reason
+
+
 def test_amount_ceiling_ignores_non_money_actions ():
 
 

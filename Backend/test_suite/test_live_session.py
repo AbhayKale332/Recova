@@ -10,9 +10,13 @@ from application.operations.live_session import get_session
 
 
 def _case(name="Asha Rao"):
+    # Kept under the merchant policy's ₹10,000 intervention ceiling so the
+    # opening's GENERATE_PAYMENT_LINK is not refused — these tests exercise
+    # reply-time behaviour (opt-out, dispute, converse), not the ceiling
+    # refusal itself (that is test_policy_guard's job, at ₹48,000).
     return {
         "customer_name": name,
-        "amount_inr": 48_000,
+        "amount_inr": 4_000,
         "failure_class": 1,
     }
 
@@ -35,7 +39,7 @@ def test_custom_session_is_simulated_and_does_not_change_metrics(client):
     transaction_id = response.json()["transaction_id"]
 
     txn = client.get(f"/api/v1/transactions/{transaction_id}").json()
-    assert txn["amount_inr"] == 48_000
+    assert txn["amount_inr"] == 4_000
     assert txn["archetype"] == "CLASS_1"
     assert txn["class_label"] == "Issuer / Network Timeout"
     assert txn["status"] == "PENDING"
@@ -146,6 +150,23 @@ def test_delete_signals_an_open_sse_stream(client):
     assert result["status"] == 200
     transaction_id = created["transaction_id"]
     assert client.get(f"/api/v1/transactions/{transaction_id}").json()["audit_trail"]
+
+
+def test_deleted_session_audit_trail_still_readable(client):
+    # DELETE ends the in-process session only; it must never bulk-delete the
+    # AuditTrail rows that are the theatre's evidence (live_session.close()).
+    # `reply()` calls `start()` itself, so this needs no open SSE stream.
+    created = client.post("/api/v1/live/sessions", json={"custom_case": _case()}).json()
+    client.post(f"/api/v1/live/sessions/{created['session_id']}/reply", json={"text": "band karo"})
+
+    before = client.get(f"/api/v1/transactions/{created['transaction_id']}").json()
+    assert before["audit_trail"]
+
+    assert client.delete(f"/api/v1/live/sessions/{created['session_id']}").status_code == 200
+
+    after = client.get(f"/api/v1/transactions/{created['transaction_id']}").json()
+    assert after["audit_trail"]
+    assert len(after["audit_trail"]) == len(before["audit_trail"])
 
 
 def test_unknown_transaction_cannot_start_live_session(client):

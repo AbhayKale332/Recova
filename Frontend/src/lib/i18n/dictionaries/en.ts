@@ -212,6 +212,8 @@ export const en = {
     actions: "Actions",
     duplicate: "Duplicate",
     delete: "Delete",
+    runLive: "Run live ▸",
+    runLiveFailed: "Couldn't start the live session",
     liveDiagnosis: "Use live Gemini diagnosis",
     liveDiagnosisHint: "Available for up to 25 total cases. The fallback remains deterministic if the provider is unavailable.",
     saveScenario: "Save scenario",
@@ -303,6 +305,56 @@ export const en = {
   landing: { comingSoon: "Overview" },
   guardrails: { title: "Guardrails" },
   audit: { title: "Audit trail" },
+
+  /**
+   * The `/live` theatre (Vision, "Part 4"). A standalone full-screen route:
+   * left is the agent (router, decision, bounds, audit), right is the stage
+   * (the WhatsApp phone mockup, later the call stage).
+   */
+  live: {
+    title: "Live session",
+    exit: "Exit to console",
+    agentColumn: "Agent",
+    stageColumn: "Stage",
+    connecting: "Connecting…",
+    notFoundTitle: "This session isn't open",
+    notFoundBody: "The session in this link isn't running. Start a new one from the console.",
+    backToConsole: "Back to console",
+    sessionEnded: "Session ended — {status}",
+
+    routeTitle: "Model route",
+    routeSeeded: "Seeded opening",
+    routeSeededHint: "A deterministic class default — no model was called for this turn.",
+    raisedBy: "Raised by {reasons}",
+    raise_stakes: "stakes",
+    raise_guardrail_proximity: "guardrail proximity",
+    escalatedFrom: "Escalated from {tier}",
+
+    decisionTitle: "Decision",
+    decisionEmpty: "Waiting for the first decision.",
+    askedFor: "Asked for",
+    sandboxRefused: "The sandbox refused",
+    handedOffTo: "Handed off to",
+    discountLabel: "Discount {pct}%",
+    scheduledFor: "Scheduled for {when}",
+
+    auditTitle: "Audit trail",
+    auditEmpty: "Nothing recorded yet.",
+
+    callTitle: "Voice",
+    callOffered: "The agent wants to call.",
+    callComingSoon: "Voice calling arrives in Part 6 — this is a placeholder for the call offer.",
+    callSessionId: "Call session #{id}",
+
+    online: "online",
+    composerPlaceholder: "Type as the customer…",
+    composerLabel: "Reply as the customer",
+    send: "Send",
+    agentTyping: "Agent is typing…",
+    customerLabel: "You (customer)",
+    agentLabel: "Agent",
+    systemLabel: "System",
+  },
 };
 
 /**

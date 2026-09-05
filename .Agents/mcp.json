@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+      "razorpay-mcp-server": {
+          "command": "docker",
+          "args": [
+              "run",
+              "--rm",
+              "-i",
+              "-e",
+              "RAZORPAY_KEY_ID",
+              "-e",
+              "RAZORPAY_KEY_SECRET",
+              "razorpay-mcp-server:latest"
+          ],
+          "env": {
+              "RAZORPAY_KEY_ID": "rzp_test_TXUeOXQkMxYqjX",
+              "RAZORPAY_KEY_SECRET": "5fNEshoHN2Atkn3QwbYa6wtz"
+          }
+      }
+    }
+  }

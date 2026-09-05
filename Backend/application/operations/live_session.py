@@ -21,6 +21,7 @@ from application.constants import (
     CallSpeaker,
     CallStatus,
     FailureClass,
+    InterventionAction,
     InterventionChannel,
     MessageDirection,
     MessageSender,
@@ -51,6 +52,7 @@ from application.operations.playbook_map import DEFAULT_PLAYBOOK, PLAYBOOK_ACTIO
 from application.operations.reconciliation_service import compute_metrics
 from application.operations.wire import _ser_msg
 from application.simulation.scenario import CaseShape, CustomCase, Scenario, plan, to_transaction
+from application.settings import settings
 
 
 Event = tuple[str, dict[str, Any]]
@@ -310,6 +312,21 @@ class LiveSession:
     ) -> None:
         txn = self._txn(db)
         if decision.allowed and decision.channel is not None:
+            dispatch_result = None
+            if decision.action == InterventionAction.GENERATE_PAYMENT_LINK:
+                # decide_tool has already run quiet hours, caps, and PolicySandbox.validate().
+                from application.integrations.routing_dispatcher import build_dispatcher
+                from application.operations.policy_guard import ProposedAction
+
+                dispatch_result = build_dispatcher(db, live_mode=settings.live_mode)(
+                    ProposedAction(
+                        action=decision.action,
+                        channel=decision.channel,
+                        discount_pct=decision.discount_pct,
+                        amount_minor=txn.amount_minor,
+                    ),
+                    {"transaction_id": self.transaction_id},
+                )
             txn.current_state = TransactionLifecycleState.INTERVENING
             db.commit()
             record_audit(
@@ -326,6 +343,17 @@ class LiveSession:
                 },
                 outcome=Outcome.SUCCESS,
             )
+            if dispatch_result is not None:
+                self.emit(
+                    "dispatch",
+                    {
+                        "channel": dispatch_result.channel,
+                        "delivered": dispatch_result.delivered,
+                        "simulated": dispatch_result.simulated,
+                        "reference": dispatch_result.reference,
+                        "detail": dispatch_result.detail,
+                    },
+                )
             if body:
                 message = self._add_message(db, MessageDirection.OUTBOUND, MessageSender.AGENT, body, {"ai_drafted": True})
                 self.emit("message", _ser_msg(message))
@@ -347,6 +375,17 @@ class LiveSession:
         if body and decision.allowed and decision.tool in {AgentTool.STOP, AgentTool.HANDOFF_TO_HUMAN}:
             message = self._add_message(db, MessageDirection.OUTBOUND, MessageSender.SYSTEM, body)
             self.emit("message", _ser_msg(message))
+        elif body and decision.terminal_state == TransactionLifecycleState.WAITING:
+            # A non-dispatching tool (e.g. SCHEDULE_RETRY) still had a drafted
+            # conversational reply to the customer's message — send it, rather
+            # than silently discarding it.
+            message = self._add_message(db, MessageDirection.OUTBOUND, MessageSender.AGENT, body, {"ai_drafted": True})
+            self.emit("message", _ser_msg(message))
+        else:
+            # No message this turn (e.g. a silently policy-refused handoff) —
+            # the client's typing indicator only clears on a "message" event,
+            # so it must be told explicitly or it hangs forever.
+            self.emit("typing", {"who": None})
         if decision.terminal_state in {
             TransactionLifecycleState.ESCALATED,
             TransactionLifecycleState.CANCELLED,
@@ -521,7 +560,13 @@ class LiveSession:
 _SESSIONS: dict[str, LiveSession] = {}
 
 
-def create_session(db: Session, *, custom_case: dict[str, Any] | None = None, transaction_id: str | None = None) -> LiveSession:
+def create_session(
+    db: Session,
+    *,
+    custom_case: dict[str, Any] | None = None,
+    transaction_id: str | None = None,
+    locale: str = "en",
+) -> LiveSession:
     session_id = f"live_{uuid.uuid4().hex}"
     run_id = session_id
     if custom_case is not None:
@@ -550,6 +595,7 @@ def create_session(db: Session, *, custom_case: dict[str, Any] | None = None, tr
         txn.transaction_id,
         run_id,
         owns,
+        locale=locale if locale in ("en", "hi") else "en",
     )
     _SESSIONS[session_id] = session
     return session
