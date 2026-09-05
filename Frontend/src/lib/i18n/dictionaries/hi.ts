@@ -246,6 +246,8 @@ export const hi: Dictionary = {
     crossDeviceHint: "CROSS_DEVICE_COMPLETION सक्रिय करता है।",
     daysOverdue: "इनवॉइस की आयु",
     days: "दिन",
+    clockTime: "समय (IST)",
+    clockTimeHint: "केस आज इसी समय पर चलेगा - असली वर्तमान समय के लिए खाली छोड़ें। TRAI क्वाइट ऑवर्स दिखाने के लिए 20:00-09:00 सेट करें।",
 
     maxDiscount: "अधिकतम छूट",
     maxDiscountHint: "इस सीमा से ऊपर की कार्रवाई भेजी नहीं जाती, इंसान को सौंपी जाती है।",
@@ -339,6 +341,7 @@ export const hi: Dictionary = {
     callMicPermission: "माइक्रोफ़ोन अनुमति मांगी जा रही है…",
     callMicDenied: "माइक्रोफ़ोन की अनुमति अस्वीकार कर दी गई या उपलब्ध नहीं है।",
     callNotConfigured: "वॉइस कॉल प्रदाता कॉन्फ़िगर नहीं है।",
+    callTimeout: "कॉल समय पर नहीं जुड़ी। दोबारा कोशिश करें, या WhatsApp पर जारी रखें।",
     callLiveTranscript: "लाइव ट्रांसक्रिप्ट",
     callWaiting: "कॉल शुरू हो रही है…",
 

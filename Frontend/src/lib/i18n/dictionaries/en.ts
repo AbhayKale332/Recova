@@ -256,6 +256,8 @@ export const en = {
     crossDeviceHint: "Triggers CROSS_DEVICE_COMPLETION.",
     daysOverdue: "Invoice age",
     days: "days",
+    clockTime: "Time (IST)",
+    clockTimeHint: "Runs the case at this time of day today - leave blank for the real current time. Set 20:00-09:00 to demo TRAI quiet hours.",
 
     maxDiscount: "Max discount",
     maxDiscountHint: "An action above this cap is handed to a human instead of sent.",
@@ -354,6 +356,7 @@ export const en = {
     callMicPermission: "Requesting microphone access…",
     callMicDenied: "Microphone access was denied or is unavailable.",
     callNotConfigured: "Voice call provider is not configured.",
+    callTimeout: "The call didn't connect in time. Try again, or continue over WhatsApp.",
     callLiveTranscript: "Live transcript",
     callWaiting: "Call starting…",
 

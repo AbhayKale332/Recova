@@ -23,6 +23,7 @@ const EMPTY_CASE = (number: number): CustomCase => ({
   days_overdue: null,
   outcome_event: null,
   playbook: null,
+  clock_ist: null,
 });
 
 export function CaseBuilder({
@@ -86,6 +87,7 @@ export function CaseBuilder({
                   <th className="px-2 py-2 font-medium">{t.sim.retriesUsed}</th>
                   <th className="px-2 py-2 font-medium">{t.sim.voiceUsed}</th>
                   <th className="px-2 py-2 font-medium">{t.sim.daysOverdue}</th>
+                  <th className="px-2 py-2 font-medium">{t.sim.clockTime}</th>
                   <th className="px-2 py-2 font-medium">{t.sim.actions}</th>
                 </tr>
               </thead>
@@ -141,6 +143,16 @@ export function CaseBuilder({
                     <td className="p-2 align-top"><NumberInput value={item.voice_attempts} min={0} max={5} disabled={disabled} onChange={(voice_attempts) => update(index, { voice_attempts })} /></td>
                     <td className="p-2 align-top"><NumberInput value={item.days_overdue ?? 0} min={0} max={365} suffix={t.sim.days} disabled={disabled} onChange={(days_overdue) => update(index, { days_overdue })} /></td>
                     <td className="p-2 align-top">
+                      <input
+                        type="time"
+                        value={item.clock_ist ?? ""}
+                        disabled={disabled}
+                        title={t.sim.clockTimeHint}
+                        onChange={(event) => update(index, { clock_ist: event.target.value || null })}
+                        className="w-28 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5"
+                      />
+                    </td>
+                    <td className="p-2 align-top">
                       <div className="flex gap-1">
                         <button type="button" onClick={() => runLive(index, item)} disabled={disabled || launching !== null} className="rounded border border-[var(--accent)] px-2 py-1 font-semibold text-[var(--accent-ink)] hover:bg-[var(--accent-wash)] disabled:opacity-50">
                           {launching === index ? "…" : t.sim.runLive}
@@ -186,6 +198,15 @@ export function CaseBuilder({
                   <Field label={t.sim.voiceUsed} hint=""><NumberInput value={item.voice_attempts} min={0} max={5} disabled={disabled} onChange={(voice_attempts) => update(index, { voice_attempts })} /></Field>
                   <Field label={t.sim.daysOverdue} hint=""><NumberInput value={item.days_overdue ?? 0} min={0} max={365} disabled={disabled} onChange={(days_overdue) => update(index, { days_overdue })} /></Field>
                 </div>
+                <Field label={t.sim.clockTime} hint={t.sim.clockTimeHint}>
+                  <input
+                    type="time"
+                    value={item.clock_ist ?? ""}
+                    disabled={disabled}
+                    onChange={(event) => update(index, { clock_ist: event.target.value || null })}
+                    className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px]"
+                  />
+                </Field>
                 <div className="flex justify-end gap-1">
                   <button type="button" onClick={() => runLive(index, item)} disabled={disabled || launching !== null} className="rounded border border-[var(--accent)] px-2 py-1 text-[12px] font-semibold text-[var(--accent-ink)] hover:bg-[var(--accent-wash)] disabled:opacity-50">
                     {launching === index ? "…" : t.sim.runLive}

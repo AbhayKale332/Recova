@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { fillTemplate, useI18n } from "@/lib/i18n";
 import { api } from "@/lib/api";
+import { describeVapiError } from "@/lib/vapi-error";
 import type { LiveCallOffer } from "@/lib/simulation";
 
 interface Turn {
@@ -153,8 +154,17 @@ export function CallStage({
         const vapi = new Vapi(publicKey);
         vapiRef.current = vapi;
 
+        // Tracks whether the call has already resolved (started or failed) so a
+        // late, non-critical `error` event (e.g. audio-processing setup, which
+        // the SDK explicitly treats as "don't throw, this is non-critical")
+        // cannot re-fail an already-active call. React state can't be read
+        // synchronously here - `callStatus` in this closure is a snapshot from
+        // whenever this effect ran, not the current value.
+        let settled = false;
+
         vapi.on("call-start", () => {
           if (isCancelled) return;
+          settled = true;
           setCallStatus("active");
           startTimeRef.current = Date.now();
           setSpeakingState("listening");
@@ -172,6 +182,7 @@ export function CallStage({
 
         vapi.on("call-end", () => {
           if (isCancelled) return;
+          settled = true;
           setCallStatus("ended");
           setSpeakingState("idle");
         });
@@ -214,13 +225,45 @@ export function CallStage({
           }
         });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        vapi.on("error", (err: any) => {
-          console.warn("Vapi error event:", err);
+        const failCall = (reason: string) => {
+          if (isCancelled || settled) return;
+          settled = true;
+          console.warn("Vapi call failed to start:", reason);
+          setCallStatus("error");
+          setErrorMessage(reason);
+          toast.failure(t.live.callTitle, reason);
+        };
+
+        vapi.on("call-start-failed", (event) => {
+          failCall(describeVapiError(event));
         });
 
-        // Start call with transient assistant configuration
-        await vapi.start(assistantConfig as Parameters<typeof vapi.start>[0]);
+        vapi.on("error", (err) => {
+          console.warn("Vapi error event:", err);
+          // Only a real failure, not this SDK's DOM-level camera/audio-processing
+          // warnings, should end a call that never started - `settled` (checked
+          // inside failCall) is what actually draws that line, since both fire
+          // through this same event.
+          failCall(describeVapiError(err));
+        });
+
+        // Hard timeout: the SDK can also stall silently (e.g. a WebRTC/room-join
+        // negotiation that never resolves and never fires an event at all).
+        const connectTimeout = window.setTimeout(() => {
+          failCall(t.live.callTimeout);
+        }, 20000);
+        vapi.on("call-start", () => window.clearTimeout(connectTimeout));
+        vapi.on("call-start-failed", () => window.clearTimeout(connectTimeout));
+        vapi.on("error", () => window.clearTimeout(connectTimeout));
+
+        // Start call with transient assistant configuration. `start()` resolves
+        // to `null` on failure rather than rejecting - the `call-start-failed`
+        // and `error` listeners above are what actually surface it, but this is
+        // a backstop in case neither fires.
+        const call = await vapi.start(assistantConfig as Parameters<typeof vapi.start>[0]);
+        if (call == null) {
+          failCall(t.live.callNotConfigured);
+        }
       } catch (err) {
         if (isCancelled) return;
         console.error("Failed to start Vapi web call:", err);

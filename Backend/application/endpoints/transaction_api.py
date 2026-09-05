@@ -3,7 +3,7 @@
 import json
 from collections import defaultdict
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import APIRouter ,Depends ,HTTPException ,Query ,status
 from fastapi .responses import StreamingResponse
@@ -38,7 +38,7 @@ voice_attempts_exhausted ,
 from application .operations .voice_attempts import voice_attempt_count
 from application .operations .policy_guard import ProposedAction
 from application .operations import policy_repository
-from application .helpers import next_quiet_hours_end ,now_ist ,utcnow
+from application .helpers import next_quiet_hours_end ,now_ist ,resolve_clock_ist ,utcnow
 
 _SSE_HEADERS ={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"}
 
@@ -282,30 +282,36 @@ def list_calls (transaction_id :str ,db :Session =Depends (get_db ))->dict :
     return {"calls":[_serialize_call (db ,s )for s in sessions ]}
 
 
+def _call_clock ()->Callable [[],datetime ]:
+    """FastAPI dependency for the IST wall clock the call-gating checks read.
+
+    Mirrors ``OrchestratorDeps.clock`` in ``workflow/recovery_graph.py``: injected
+    so a test can pin a moment via ``app.dependency_overrides``, never accepted
+    as a request input. A previous version took a ``clock_ist`` query parameter,
+    which let any caller supply their own clock and bypass the TRAI quiet-hours
+    gate this endpoint exists to enforce.
+    """
+    return now_ist
+
+
 @router .post ("/transactions/{transaction_id}/call/start",status_code =status .HTTP_201_CREATED )
 def start_call (
 transaction_id :str ,
-clock_ist :str |None =Query (default =None ),
 db :Session =Depends (get_db ),
+clock :Callable [[],datetime ]=Depends (_call_clock ),
 )->dict :
     """Start a voice-recovery call for a transaction.
 
     Gated by compliance rules (quiet hours -> retry cap -> voice cap) and PolicySandbox.
     """
     txn =_require_txn (db ,transaction_id )
-    clock =None 
-    if clock_ist :
-        try :
-            clock =datetime .fromisoformat (clock_ist )
-        except Exception :
-            clock =None 
-    if clock is None and txn .metadata_json and txn .metadata_json .get ("clock_ist"):
-        try :
-            clock =datetime .fromisoformat (txn .metadata_json ["clock_ist"])
-        except Exception :
-            clock =None 
-    if clock is None :
-        clock =now_ist ()
+    clock =clock ()
+    # An authored case may pin its own time of day (e.g. to demo TRAI quiet
+    # hours deliberately) via CustomCase.clock_ist - set once at authoring time
+    # by whoever built the case, not by this request. See live_session.py.
+    authored =resolve_clock_ist ((txn .metadata_json or {}).get ("clock_ist"),reference =clock )
+    if authored is not None :
+        clock =authored
 
     # Gate 1: TRAI quiet hours
     if is_within_quiet_hours (clock ):

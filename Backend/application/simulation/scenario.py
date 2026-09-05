@@ -65,6 +65,10 @@ class CustomCase (BaseModel ):
     days_overdue :int |None =Field (None ,ge =0 ,le =365 )
     outcome_event :str |None =Field (None ,max_length =64 )
     playbook :str |None =Field (None ,max_length =64 )
+    # Time of day (IST, "HH:MM") the case is worked at - lets an authored case
+    # demo a time-dependent guardrail (e.g. TRAI quiet hours) deliberately. The
+    # date is always "today", resolved by helpers.resolve_clock_ist.
+    clock_ist :str |None =Field (None ,pattern =r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 class CaseShape (BaseModel ):
@@ -184,6 +188,7 @@ class PlannedCase :
     days_overdue :int
     probability :probability .CaseProbability
     playbook :str |None =None
+    clock_ist :str |None =None
 
     @property
     def amount_inr (self )->float :
@@ -347,6 +352,7 @@ def plan (scenario :Scenario ,run_id :str )->list [PlannedCase ]:
         days_overdue =days_overdue ,
         probability =estimate ,
         playbook =effective_playbook ,
+        clock_ist =custom .clock_ist ,
         )
         )
 
@@ -426,6 +432,7 @@ def to_transaction (case :PlannedCase ,run_id :str )->TransactionState :
     "ai_tag":"SIMULATED_CASE",
     "reply_kind":case .reply ,
     "days_overdue":case .days_overdue ,
+    "clock_ist":case .clock_ist ,
     },
     )
 

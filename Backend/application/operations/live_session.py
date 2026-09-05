@@ -12,7 +12,8 @@ import asyncio
 import json
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import datetime
+from typing import Any, Callable
 
 from sqlalchemy.orm import Session
 
@@ -39,7 +40,7 @@ from application.entities import (
     Message,
     TransactionState,
 )
-from application.helpers import next_quiet_hours_end, now_ist
+from application.helpers import next_quiet_hours_end, now_ist, resolve_clock_ist
 from application.operations import agent_tools
 from application.operations.agent_tools import AgentDecision, AgentTool, decide_tool
 from application.operations.audit_service import record_audit
@@ -104,7 +105,13 @@ class _DeterministicOpeningRouter:
         )
 
 
-def _bounds(db: Session, txn: TransactionState, *, stopping_rule: str | None = None) -> dict[str, Any]:
+def _bounds(
+    db: Session,
+    txn: TransactionState,
+    *,
+    stopping_rule: str | None = None,
+    clock: Callable[[], datetime] = now_ist,
+) -> dict[str, Any]:
     policy = get_policy(db)
     audits = (
         db.query(AuditTrail)
@@ -137,7 +144,7 @@ def _bounds(db: Session, txn: TransactionState, *, stopping_rule: str | None = N
         TransactionLifecycleState.CANCELLED,
         TransactionLifecycleState.FAILED,
     }
-    clock = now_ist()
+    clock = clock()
     quiet = not closed and is_within_quiet_hours(clock)
     armed_rule = None
     if not closed:
@@ -180,6 +187,10 @@ class LiveSession:
     loop: asyncio.AbstractEventLoop | None = None
     last_decision: AgentDecision | None = None
     call_session_id: int | None = None
+    # The IST wall clock this session's compliance checks read. Injected like
+    # OrchestratorDeps.clock, so an authored case can pin a moment (e.g. to demo
+    # TRAI quiet hours live) via CustomCase.clock_ist - see create_session().
+    clock: Callable[[], datetime] = field(default=now_ist)
 
     def emit(self, event: str, data: dict[str, Any]) -> None:
         if self.closed:
@@ -291,7 +302,7 @@ class LiveSession:
             self.transaction_id,
             failure_class=fc,
             voice_attempts=0,
-            now_ist=now_ist(),
+            now_ist=self.clock(),
             model_router=_DeterministicOpeningRouter(_tool_for_playbook(playbook)),
         )
         self.last_decision = opening_decision
@@ -371,7 +382,7 @@ class LiveSession:
                 db.refresh(call)
                 self.call_session_id = call.id
                 txn = self._txn(db)
-                b = _bounds(db, txn)
+                b = _bounds(db, txn, clock=self.clock)
                 assistant = build_assistant(txn, self.locale, b, db=db)
                 self.emit(
                     "call_offer",
@@ -403,7 +414,7 @@ class LiveSession:
         }:
             self._finish(db, decision.terminal_state.value, decision.stopping_rule.value if decision.stopping_rule else None)
         elif decision.terminal_state == TransactionLifecycleState.WAITING:
-            self.emit("bounds", _bounds(db, txn))
+            self.emit("bounds", _bounds(db, txn, clock=self.clock))
             self.emit("status", {"final_state": TransactionLifecycleState.WAITING.value})
 
     def _finish(self, db: Session, final_state: str, stopping_rule: str | None = None) -> None:
@@ -413,7 +424,7 @@ class LiveSession:
         meta["unworked"] = False
         txn.metadata_json = meta
         db.commit()
-        self.emit("bounds", _bounds(db, txn, stopping_rule=stopping_rule))
+        self.emit("bounds", _bounds(db, txn, stopping_rule=stopping_rule, clock=self.clock))
         self.emit("status", {"final_state": final_state})
         self.emit("complete", {"final_state": final_state, "metrics": compute_metrics(db, simulation_run_id=self.run_id)})
         self.terminal = True
@@ -500,14 +511,14 @@ class LiveSession:
         self.emit("typing", {"who": "agent"})
         body, converse_route = self._converse(db, text)
         self._route(converse_route)
-        decision = decide_tool(db, self.transaction_id, model_router=agent_tools.router, now_ist=now_ist())
+        decision = decide_tool(db, self.transaction_id, model_router=agent_tools.router, now_ist=self.clock())
         self.last_decision = decision
         self._route(decision.route_decision)
         self.emit("decision", decision.as_dict())
         self._apply_agent_decision(db, decision, body)
         txn = self._txn(db)
         if not self.terminal:
-            self.emit("bounds", _bounds(db, txn))
+            self.emit("bounds", _bounds(db, txn, clock=self.clock))
             self.emit("status", {"final_state": txn.current_state.value})
         return {"session_id": self.session_id, "final_state": txn.current_state.value}
 
@@ -515,7 +526,7 @@ class LiveSession:
         if self.last_decision is None or self.last_decision.tool != AgentTool.VOICE_CALL or not self.last_decision.allowed:
             raise ValueError("A permitted VOICE_CALL decision is required before opening the web call.")
         txn = self._txn(db)
-        b = _bounds(db, txn)
+        b = _bounds(db, txn, clock=self.clock)
         assistant = build_assistant(txn, self.locale, b, db=db)
         return {
             "allowed": True,
@@ -610,12 +621,22 @@ def create_session(
     if owns:
         db.add(txn)
     db.commit()
+
+    # An authored case's clock_ist ("HH:MM") freezes this session's compliance
+    # clock at that time of day today, so a demo can deliberately show TRAI
+    # quiet hours (or a daytime pass) instead of depending on when it happens
+    # to be run. Absent it, the session reads the real clock like everything
+    # else in the graph.
+    authored_moment = resolve_clock_ist(meta.get("clock_ist"))
+    clock = (lambda moment=authored_moment: moment) if authored_moment is not None else now_ist
+
     session = LiveSession(
         session_id,
         txn.transaction_id,
         run_id,
         owns,
         locale=locale if locale in ("en", "hi") else "en",
+        clock=clock,
     )
     _SESSIONS[session_id] = session
     return session

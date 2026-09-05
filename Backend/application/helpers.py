@@ -28,6 +28,29 @@ def now_ist ()->datetime :
     return datetime .now (IST )
 
 
+def resolve_clock_ist (hhmm :str |None ,*,reference :datetime |None =None )->datetime |None :
+    """Combine an authored ``"HH:MM"`` time-of-day with a reference IST date.
+
+    Lets an operator-authored case pin the wall clock a compliance gate reads
+    (e.g. to demo TRAI quiet hours) by choosing a time of day rather than a raw
+    datetime - the date always comes from ``reference`` (or the real "now"), so
+    the same authored case still reads as "today" whenever it is actually run.
+    Returns ``None`` for anything absent or unparseable, so callers can fall
+    back to their own default clock without a special case.
+    """
+    if not hhmm :
+        return None
+    try :
+        hour_str ,minute_str =hhmm .split (":",1 )
+        hour ,minute =int (hour_str ),int (minute_str )
+    except (ValueError ,AttributeError ):
+        return None
+    if not (0 <=hour <=23 and 0 <=minute <=59 ):
+        return None
+    base =(reference or now_ist ()).astimezone (IST )
+    return base .replace (hour =hour ,minute =minute ,second =0 ,microsecond =0 )
+
+
 def next_quiet_hours_end (moment :datetime )->datetime :
     """The next 09:00 IST at or after ``moment``.
 

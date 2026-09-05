@@ -9,6 +9,7 @@ from application.entities import TransactionState
 from application.operations.conversation_service import build_call, persona_for
 from application.operations.model_router import _model_for
 from application.operations import policy_repository
+from application.operations.speech_format import speakable
 from application.settings import settings
 
 
@@ -36,7 +37,9 @@ def build_assistant(
         amount_inr=amount_inr,
         persona=persona,
     )
-    first_message = beat.turns[0].text if beat.turns else f"Namaste {customer_name}, support team se call hai."
+    first_message = speakable(
+        beat.turns[0].text if beat.turns else f"Namaste {customer_name}, support team se call hai."
+    )
 
     # Model routing: full tier for the configured provider
     provider = (settings.llm_provider or "openai").strip().lower()
@@ -67,7 +70,7 @@ def build_assistant(
     guardrail_note = f"you may not offer more than {max_discount_pct}%; {voice_status}"
 
     lang_instruction = "Hindi / Hinglish" if locale == "hi" else "English"
-    system_prompt = (
+    system_prompt = speakable(
         f"You are Recova's AI voice recovery assistant calling {customer_name}.\n\n"
         f"Case Facts:\n"
         f"- Customer: {customer_name}\n"
@@ -78,11 +81,21 @@ def build_assistant(
         f"- {guardrail_note}\n"
         f"- You may NOT offer a discount higher than {max_discount_pct}%.\n"
         f"- Respect customer disputes or opt-outs ('stop', 'band karo') immediately by acknowledging and ending gracefully.\n\n"
+        f"Speech: this is a live phone call, not text. Always say any amount aloud in words "
+        f"(for example 'five thousand rupees'), never as digits or a currency symbol - a listener cannot "
+        f"hear a currency symbol or a comma. Speak every amount the same way the Amount fact above is written.\n\n"
         f"Tone: Professional, calm, empathetic, and reassuring."
     )
 
+    # Vapi rejects assistant.name over 40 characters outright, and a live
+    # transaction id ("sim_" + an 8-char run-id slice + "_custom_0000") can
+    # push a longer prefix past that - truncate rather than fail the call.
+    # This name is a transient, per-call label only, never looked up again,
+    # so truncation collisions carry no correctness risk.
+    name = f"recova-{txn.transaction_id}"[:40]
+
     return {
-        "name": f"recova-assistant-{txn.transaction_id}",
+        "name": name,
         "voice": {
             "provider": "11labs",
             "voiceId": settings.elevenlabs_voice_id,

@@ -46,6 +46,23 @@ def test_custom_session_is_simulated_and_does_not_change_metrics(client):
     assert client.get("/api/v1/metrics").json() == before
 
 
+def test_custom_case_clock_ist_pins_the_session_quiet_hours_state(client):
+    # Frozen for the whole session so a demo can deliberately show TRAI quiet
+    # hours instead of depending on when the suite happens to run.
+    case = _case()
+    case["clock_ist"] = "21:40"
+    created = client.post("/api/v1/live/sessions", json={"custom_case": case}).json()
+    client.post(
+        f"/api/v1/live/sessions/{created['session_id']}/reply",
+        json={"text": "band karo"},
+    )
+    stream = client.get(f"/api/v1/live/sessions/{created['session_id']}/stream")
+    events = _events_from_sse(stream.text)
+    bounds = next(data for name, data in events if name == "bounds")
+    assert bounds["inQuietHours"] is True
+    assert bounds["armedRule"] == "TRAI_QUIET_HOURS"
+
+
 def test_opt_out_is_screened_before_any_model_call(client, monkeypatch):
     calls = []
 

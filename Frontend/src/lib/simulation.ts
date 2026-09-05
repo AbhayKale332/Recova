@@ -37,6 +37,10 @@ export interface CustomCase {
   days_overdue: number | null;
   outcome_event: string | null;
   playbook: string | null;
+  // Time of day (IST, "HH:MM") to run this case at - lets an authored case
+  // demo a time-dependent guardrail (TRAI quiet hours) deliberately. The date
+  // is always "today"; null runs at the real current time.
+  clock_ist: string | null;
 }
 
 export interface SavedScenario {
