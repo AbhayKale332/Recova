@@ -35,7 +35,19 @@ async def lifespan (app :FastAPI ):
     # startup rather than left to grow the database across a demo afternoon.
     _prune_simulation_runs ()
     _prune_live_sessions ()
-    yield
+
+    import asyncio
+    from application .operations import deadline_sweeper
+
+    sweeper_task =asyncio .create_task (deadline_sweeper .run_forever ())
+    try :
+        yield
+    finally :
+        sweeper_task .cancel ()
+        try :
+            await sweeper_task
+        except asyncio .CancelledError :
+            pass
 
 
 def _backfill_policy_actions ()->None :

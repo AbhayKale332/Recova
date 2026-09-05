@@ -112,6 +112,42 @@ class _DeterministicOpeningRouter:
         )
 
 
+def add_message(
+    db: Session,
+    transaction_id: str,
+    direction: MessageDirection,
+    sender: MessageSender,
+    body: str,
+    meta: dict[str, Any] | None = None,
+) -> Message:
+    """Append one thread message, keeping ``seq`` monotonic per transaction.
+
+    Free-standing so a caller with no open ``LiveSession`` — the deadline
+    sweeper (Part 5), for one — can still write into the same thread a live
+    session would. ``LiveSession._add_message`` delegates here.
+    """
+    last = (
+        db.query(Message)
+        .filter_by(transaction_id=transaction_id)
+        .order_by(Message.seq.desc())
+        .first()
+    )
+    message = Message(
+        transaction_id=transaction_id,
+        channel=InterventionChannel.WHATSAPP,
+        direction=direction,
+        sender=sender,
+        body=body,
+        status=MessageStatus.READ,
+        seq=(last.seq + 1) if last else 0,
+        meta_json=meta,
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+    return message
+
+
 def _bounds(
     db: Session,
     txn: TransactionState,
@@ -250,26 +286,7 @@ class LiveSession:
         body: str,
         meta: dict[str, Any] | None = None,
     ) -> Message:
-        last = (
-            db.query(Message)
-            .filter_by(transaction_id=self.transaction_id)
-            .order_by(Message.seq.desc())
-            .first()
-        )
-        message = Message(
-            transaction_id=self.transaction_id,
-            channel=InterventionChannel.WHATSAPP,
-            direction=direction,
-            sender=sender,
-            body=body,
-            status=MessageStatus.READ,
-            seq=(last.seq + 1) if last else 0,
-            meta_json=meta,
-        )
-        db.add(message)
-        db.commit()
-        db.refresh(message)
-        return message
+        return add_message(db, self.transaction_id, direction, sender, body, meta)
 
     def _route(self, decision: RouteDecision) -> None:
         self.emit("route", decision.as_dict())
@@ -360,8 +377,14 @@ class LiveSession:
         ]
 
         if is_partial:
-            deadline_days = decision.deadline_days or settings.partial_plan_default_days
-            deadline = self.clock() + timedelta(days=deadline_days)
+            if settings.partial_plan_demo_seconds > 0:
+                # A 14-day deadline cannot be demonstrated in a two-minute
+                # video - this override lets the sweeper's follow-up land on
+                # camera instead.
+                deadline = self.clock() + timedelta(seconds=settings.partial_plan_demo_seconds)
+            else:
+                deadline_days = decision.deadline_days or settings.partial_plan_default_days
+                deadline = self.clock() + timedelta(days=deadline_days)
             artifact = payment_artifacts.mint(
                 db,
                 txn,
@@ -737,6 +760,31 @@ class LiveSession:
         )
         return [row.as_dict() for row in rows]
 
+    def check_latest_payment_status(self, db: Session) -> dict[str, Any]:
+        """On-demand reconcile for the voice `check_payment_status` tool.
+
+        The background poll (`_poll_payments`) already reconciles on a timer,
+        but a customer who says "maine kar diya" mid-call wants the answer
+        now, not at the next tick.
+        """
+        artifact = (
+            db.query(PaymentArtifact)
+            .filter_by(transaction_id=self.transaction_id)
+            .order_by(PaymentArtifact.id.desc())
+            .first()
+        )
+        if artifact is None:
+            return {"found": False, "artifact": None}
+
+        if artifact.provider_id is not None:
+            before_status = artifact.status
+            before_paid = artifact.amount_paid_minor
+            payment_artifacts.reconcile(db, artifact)
+            if artifact.status != before_status or artifact.amount_paid_minor != before_paid:
+                self._announce_payment(db, artifact)
+
+        return {"found": True, "artifact": artifact.as_dict()}
+
     async def _poll_payments(self) -> None:
         """Background loop: notice a completed Razorpay checkout and reflect
         it into the thread. There is no webhook reachable from localhost in
@@ -873,6 +921,8 @@ class LiveSession:
             if at_offset_sec > (call.duration_sec or 0):
                 call.duration_sec = at_offset_sec
         db.commit()
+        label = f"{who.value}: {text[:60]}{'…' if len(text) > 60 else ''}"
+        self.emit("step", {"phase": "voice_turn", "label": label})
         return {"call_session_id": self.call_session_id, "speaker": who.value, "text": text, "seq": count}
 
     def close(self, db: Session) -> None:
@@ -960,6 +1010,19 @@ def create_session(
 
 def get_session(session_id: str) -> LiveSession | None:
     return _SESSIONS.get(session_id)
+
+
+def find_session_by_transaction(transaction_id: str) -> LiveSession | None:
+    """The live session for a transaction, if one is open right now.
+
+    Used by the deadline sweeper (Part 5): a follow-up it drafts still has to
+    reach an open theatre's SSE stream, not just the durable ``Message`` row,
+    or the follow-up never appears on screen mid-demo.
+    """
+    for session in _SESSIONS.values():
+        if session.transaction_id == transaction_id and not session.closed:
+            return session
+    return None
 
 
 def remove_session(session_id: str) -> None:

@@ -371,6 +371,26 @@ export const api = {
     post<PaymentArtifact>(
       `/live/sessions/${encodeURIComponent(sessionId)}/artifacts/${artifactId}/simulate-pay`,
     ),
+
+  /** The one entry point Rekha's client-side Vapi tool-calls hit (Part 4) —
+   * runs the identical `gate_tool` chain a chat-model proposal would, so the
+   * voice agent can never mint anything the chat agent could not. */
+  runAgentTool: (sessionId: string, body: { tool: string; args: Record<string, unknown> }) =>
+    post<{
+      allowed: boolean;
+      tool: string;
+      reason: string;
+      sandbox_reason: string | null;
+      artifact: PaymentArtifact | null;
+    }>(`/live/sessions/${encodeURIComponent(sessionId)}/agent/tool`, body),
+
+  /** On-demand reconcile for the voice `check_payment_status` tool — the
+   * background poll already does this on a timer, but a customer saying
+   * "maine kar diya" mid-call wants the answer now. */
+  checkPaymentStatus: (sessionId: string) =>
+    post<{ found: boolean; artifact: PaymentArtifact | null }>(
+      `/live/sessions/${encodeURIComponent(sessionId)}/artifacts/check-status`,
+    ),
 };
 
 /**

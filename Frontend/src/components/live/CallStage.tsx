@@ -6,7 +6,9 @@ import { useToast } from "@/components/Toast";
 import { fillTemplate, useI18n } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { describeVapiError } from "@/lib/vapi-error";
+import { ArtifactCard } from "@/components/live/WhatsAppThread";
 import type { LiveCallOffer } from "@/lib/simulation";
+import type { PaymentArtifact } from "@/lib/types";
 
 interface Turn {
   id: string;
@@ -14,6 +16,16 @@ interface Turn {
   text: string;
   at_offset_sec: number;
 }
+
+/** Product-level function names named in the assistant config
+ * (`voice_agent.build_assistant`) → the `AgentTool` enum value
+ * `POST /agent/tool` expects. No MCP tool name ever appears here — that is
+ * the whole point of naming these at the product level. */
+const TOOL_CALL_MAP: Record<string, string> = {
+  create_payment_qr: "GENERATE_QR_CODE",
+  create_payment_link: "GENERATE_PAYMENT_LINK",
+  offer_partial_plan: "OFFER_PARTIAL_PLAN",
+};
 
 /**
  * Live Voice Call Stage.
@@ -27,11 +39,19 @@ interface Turn {
 export function CallStage({
   offer,
   sessionId,
+  artifact,
+  caseAmountInr,
 }: {
   offer: LiveCallOffer | null;
   sessionId?: string | null;
+  /** The session's most recently minted artifact — the same object the
+   * WhatsApp thread renders, kept in sync via the `artifact` SSE event that
+   * `run_agent_tool` triggers server-side, so this card and the thread's
+   * card never disagree. */
+  artifact?: PaymentArtifact | null;
+  caseAmountInr?: number;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const toast = useToast();
 
   const [callStatus, setCallStatus] = useState<
@@ -154,6 +174,61 @@ export function CallStage({
         const vapi = new Vapi(publicKey);
         vapiRef.current = vapi;
 
+        // Client-side tools have no `server.url` — Vapi cannot get a result
+        // back from a webhook, so an `add-message` Live Call Control message
+        // is the documented way to feed the outcome back into the
+        // conversation: a refusal reaches Rekha's mouth as the sandbox's own
+        // sentence, not a paraphrase.
+        const addSystemMessage = (content: string) =>
+          vapi.send({ type: "add-message", message: { role: "system", content } });
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const handleToolCalls = async (message: any) => {
+          if (!sessionId) return;
+          const calls: unknown[] = message?.toolCallList ?? message?.toolCalls ?? [];
+
+          for (const call of calls as Array<{
+            function?: { name?: string; arguments?: string };
+          }>) {
+            const name = call.function?.name;
+            if (!name) continue;
+            let args: Record<string, unknown> = {};
+            try {
+              args = JSON.parse(call.function?.arguments ?? "{}");
+            } catch {
+              args = {};
+            }
+
+            try {
+              if (name === "check_payment_status") {
+                const result = await api.checkPaymentStatus(sessionId);
+                const content =
+                  result.found && result.artifact
+                    ? result.artifact.status === "created"
+                      ? "No payment received yet."
+                      : `Payment received: ₹${(result.artifact.amount_paid_minor / 100).toLocaleString("en-IN")}.`
+                    : "No payment link or QR has been created yet.";
+                addSystemMessage(content);
+                continue;
+              }
+
+              const tool = TOOL_CALL_MAP[name];
+              if (!tool) continue;
+
+              const result = await api.runAgentTool(sessionId, { tool, args });
+              const content = result.allowed
+                ? result.artifact
+                  ? `${name.replace(/_/g, " ")} ready for ₹${(result.artifact.amount_minor / 100).toLocaleString("en-IN")}. Tell the customer.`
+                  : `${name.replace(/_/g, " ")} done. Tell the customer.`
+                : `Refused: ${result.sandbox_reason ?? result.reason}`;
+              addSystemMessage(content);
+            } catch (err) {
+              console.warn("Agent tool call failed:", name, err);
+              addSystemMessage("That didn't go through on our side — apologize and offer to try again.");
+            }
+          }
+        };
+
         // Tracks whether the call has already resolved (started or failed) so a
         // late, non-critical `error` event (e.g. audio-processing setup, which
         // the SDK explicitly treats as "don't throw, this is non-critical")
@@ -190,6 +265,12 @@ export function CallStage({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         vapi.on("message", (message: any) => {
           if (isCancelled) return;
+
+          if (message?.type === "tool-calls") {
+            handleToolCalls(message);
+            return;
+          }
+
           if (message?.type === "transcript") {
             const role: "AGENT" | "CUSTOMER" =
               message.role === "assistant" || message.role === "agent" ? "AGENT" : "CUSTOMER";
@@ -391,6 +472,17 @@ export function CallStage({
             ElevenLabs • {offer.call_session_id ? `Vapi #${offer.call_session_id}` : "Vapi"}
           </span>
         </div>
+      ) : null}
+
+      {/* Payment artifact minted mid-call — same card the WhatsApp thread
+          renders, kept in sync via the `artifact` SSE event. */}
+      {artifact && sessionId && (callStatus === "active" || callStatus === "ended") ? (
+        <ArtifactCard
+          sessionId={sessionId}
+          artifact={artifact}
+          caseAmountInr={caseAmountInr ?? artifact.amount_minor / 100}
+          locale={locale}
+        />
       ) : null}
 
       {/* Live Transcript Stream */}

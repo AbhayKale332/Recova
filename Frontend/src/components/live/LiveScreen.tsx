@@ -160,7 +160,12 @@ export function LiveScreen() {
               onSend={session.reply}
             />
           </PhoneFrame>
-          <CallStage offer={session.callOffer} sessionId={sessionId} />
+          <CallStage
+            offer={session.callOffer}
+            sessionId={sessionId}
+            artifact={session.artifact}
+            caseAmountInr={session.start.amount_inr}
+          />
         </section>
 
         <section aria-label={t.live.agentColumn} className="order-2 flex flex-col gap-3 lg:order-1">

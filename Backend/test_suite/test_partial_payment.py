@@ -146,7 +146,7 @@ def test_live_session_run_agent_tool_generates_partial_payment_link_and_closes_p
         failure_class=1,
         amount_inr=5000,
     )
-    session = create_session(db_session, case=case)
+    session = create_session(db_session, custom_case=case.model_dump())
     session.start(db_session)
 
     # Initial opening created an artifact for 5000

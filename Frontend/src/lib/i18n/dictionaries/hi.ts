@@ -10,6 +10,7 @@ export const hi: Dictionary = {
 
   nav: {
     console: "कंसोल",
+    subscriptions: "सब्सक्रिप्शन",
     guardrails: "गार्डरेल्स",
     audit: "ऑडिट",
     landing: "अवलोकन",
@@ -298,6 +299,27 @@ export const hi: Dictionary = {
     contribution: "{delta} pp",
     modelNote:
       "हर समस्या और प्लेबुक की एक आधार दर, इस केस के अनुसार समायोजित, देखे गए परिणामों से परिष्कृत।",
+  },
+
+  calendar: {
+    title: "सब्सक्रिप्शन कैलेंडर",
+    desc: "हर आने वाला मैंडेट डेबिट, उसकी नियत तारीख पर दिखाया गया।",
+    add: "सब्सक्रिप्शन जोड़ें",
+    customer: "ग्राहक",
+    plan: "प्लान",
+    amount: "राशि (₹)",
+    nextDebit: "अगला डेबिट",
+    salaryDay: "सैलरी दिन",
+    mandateStatus: "मैंडेट स्थिति",
+    retries: "पुनः प्रयास",
+    save: "सेव करें",
+    saving: "सेव हो रहा है…",
+    more: "+{count} और",
+    category: {
+      paid: "वसूल किया गया",
+      pending: "आगामी",
+      sent: "आउटरीच भेजी गई",
+    },
   },
 
   landing: { comingSoon: "अवलोकन" },

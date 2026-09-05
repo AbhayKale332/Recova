@@ -17,6 +17,7 @@ import { formatRatio } from "@/lib/format";
 
 const DESTINATIONS = [
   { href: "/console", key: "console" as const, exact: true },
+  { href: "/console/subscriptions", key: "subscriptions" as const, exact: false },
   { href: "/console/guardrails", key: "guardrails" as const, exact: false },
   { href: "/console/audit", key: "audit" as const, exact: false },
 ];
@@ -117,7 +118,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 
       <nav
         aria-label={t.nav.primary}
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-[var(--border)] bg-[var(--surface)] pb-[env(safe-area-inset-bottom)] md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-[var(--border)] bg-[var(--surface)] pb-[env(safe-area-inset-bottom)] md:hidden"
       >
         {DESTINATIONS.map((d) => {
           const active = isActive(d.href, d.exact);

@@ -29,6 +29,8 @@ def build_assistant(
     amount_inr = float(txn.amount_minor) / 100
     failure_class = int(txn.failure_class)
 
+    agent_name = settings.voice_agent_name
+
     # First message from the scripted call for this failure class
     persona = persona_for(txn.id or 0)
     beat = build_call(
@@ -36,9 +38,11 @@ def build_assistant(
         name=customer_name,
         amount_inr=amount_inr,
         persona=persona,
+        agent_name=agent_name,
     )
     first_message = speakable(
-        beat.turns[0].text if beat.turns else f"Namaste {customer_name}, support team se call hai."
+        beat.turns[0].text if beat.turns else f"Namaste {customer_name}, main {agent_name} bol rahi hoon.",
+        locale,
     )
 
     # Model routing: full tier for the configured provider
@@ -91,7 +95,10 @@ def build_assistant(
 
     lang_instruction = "Hindi / Hinglish" if locale == "hi" else "English"
     system_prompt = speakable(
-        f"You are Recova's AI voice recovery assistant calling {customer_name}.\n\n"
+        f"You are {agent_name}, Recova's AI voice recovery assistant calling {customer_name}.\n\n"
+        f"Language: default to Hindi (Devanagari script) - that is how you open every call. "
+        f"If {customer_name} replies in English, switch to English for the rest of the call and stay there. "
+        f"Never mix scripts mid-sentence.\n\n"
         f"Case Facts:\n"
         f"- Customer: {customer_name}\n"
         f"- Amount: ₹{amount_inr:,.2f}\n"
@@ -103,10 +110,13 @@ def build_assistant(
         f"- You may NOT offer a discount higher than {max_discount_pct}%.\n"
         f"{partial_rule}\n"
         f"- Respect customer disputes or opt-outs ('stop', 'band karo') immediately by acknowledging and ending gracefully.\n\n"
+        f"Tools: you can generate a payment QR, a payment link, offer a partial-payment plan, or check whether "
+        f"a payment has already come in. Call the matching function when the customer asks or agrees to pay - "
+        f"do not just say you will send something without calling the tool.\n\n"
         f"Speech: this is a live phone call, not text. Always say any amount aloud in words "
-        f"(for example 'five thousand rupees'), never as digits or a currency symbol - a listener cannot "
+        f"(for example 'five thousand rupees' or 'पांच हज़ार रुपये'), never as digits or a currency symbol - a listener cannot "
         f"hear a currency symbol or a comma. Speak every amount the same way the Amount fact above is written.\n\n"
-        f"Tone: Professional, calm, empathetic, and reassuring."
+        f"Tone: Professional, calm, empathetic, and reassuring - you are speaking, as a woman, from a real support floor."
     )
 
     # Vapi rejects assistant.name over 40 characters outright, and a live
@@ -116,32 +126,100 @@ def build_assistant(
     # so truncation collisions carry no correctness risk.
     name = f"recova-{txn.transaction_id}"[:40]
 
+    def _request_start(hindi: str) -> list[dict[str, str]]:
+        return [{"type": "request-start", "content": hindi}]
+
+    # Named at the product level only - GENERATE_QR_CODE / GENERATE_PAYMENT_LINK /
+    # OFFER_PARTIAL_PLAN never appear here, and no MCP tool name ever reaches
+    # this config (mirrors the DECIDE-prompt invariant in razorpay_mcp.py).
+    # No `server` key anywhere - that is what makes these client-side: the
+    # browser handles `tool-calls`, POSTs to `/agent/tool`, and feeds the
+    # outcome back with `vapi.addMessage` (see CallStage.tsx).
     tools = [
         {
             "type": "function",
             "function": {
-                "name": "generate_payment_link",
+                "name": "create_payment_qr",
+                "description": "Generate a Razorpay UPI QR code the customer can scan to pay.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "amount_inr": {
+                            "type": "number",
+                            "description": "The amount in INR for the QR code. Omit to use the full outstanding amount.",
+                        }
+                    },
+                },
+            },
+            "messages": _request_start("एक सेकंड, QR बना रही हूँ…"),
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_payment_link",
                 "description": "Generate a payment link for the customer for full or permitted partial payment.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "amount_inr": {
                             "type": "number",
-                            "description": "The amount in INR for the payment link.",
+                            "description": "The amount in INR for the payment link. Omit to use the full outstanding amount.",
                         }
                     },
                 },
             },
-        }
+            "messages": _request_start("एक सेकंड, लिंक भेज रही हूँ…"),
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "offer_partial_plan",
+                "description": "Offer a partial-payment plan: the customer pays part now and the rest by a deadline.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "first_payment_inr": {
+                            "type": "number",
+                            "description": "The amount in INR the customer will pay right now.",
+                        },
+                        "deadline_days": {
+                            "type": "number",
+                            "description": "Days from today the remaining balance is due. Omit for the default.",
+                        },
+                    },
+                    "required": ["first_payment_inr"],
+                },
+            },
+            "messages": _request_start("ठीक है, plan बना रही हूँ…"),
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "check_payment_status",
+                "description": "Check whether the customer's most recent payment link or QR has been paid yet.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+            "messages": _request_start("चेक कर रही हूँ, एक पल…"),
+        },
     ]
 
     return {
         "name": name,
+        # Ambient call-center room tone, so silence between turns doesn't
+        # read as a bot on an empty line - a deliberate, demo-visible choice,
+        # not a default left on by accident.
+        "backgroundSound": settings.vapi_background_sound,
         "voice": {
             "provider": "11labs",
             "voiceId": settings.elevenlabs_voice_id,
             "model": settings.elevenlabs_model,
         },
+        "transcriber": {
+            "provider": settings.vapi_transcriber_provider,
+            "model": settings.vapi_transcriber_model,
+            "language": settings.vapi_transcriber_language,
+        },
+        "clientMessages": ["tool-calls", "transcript", "status-update"],
         "model": {
             "provider": vapi_provider,
             "model": model_name,

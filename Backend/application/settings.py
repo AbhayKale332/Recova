@@ -43,6 +43,13 @@ class Settings (BaseSettings ):
     # A partial-plan's balance deadline, absent an explicit deadline_days from
     # the model. The sweeper (Part 5) reads this too.
     partial_plan_default_days :int =14
+    # > 0 overrides partial_plan_default_days with a deadline this many
+    # *seconds* out instead of days - a 14-day deadline cannot be demonstrated
+    # in a two-minute video. Set to 45 for a recording; leave 0 otherwise.
+    partial_plan_demo_seconds :int =0
+    # How often the deadline sweeper (Part 5) wakes up to check for a passed
+    # partial-payment deadline with a balance still outstanding.
+    deadline_sweep_seconds :int =30
 
     # How often a live session polls Razorpay for a minted artifact's payment
     # status. There is no webhook reachable from localhost in the demo, so
@@ -111,6 +118,15 @@ class Settings (BaseSettings ):
     vapi_phone_number_id :str =""
     vapi_webhook_secret :str =""
     vapi_allowed_numbers :str =""
+
+    voice_agent_name :str ="Rekha"
+    voice_agent_locale :str ="hi"
+    vapi_transcriber_provider :str ="deepgram"
+    vapi_transcriber_model :str ="nova-3"
+    vapi_transcriber_language :str ="multi"
+    # Ambient call-center room tone so Rekha doesn't sound like she's calling
+    # from total silence - "off" disables it. Vapi's built-in options.
+    vapi_background_sound :str ="office"
 
     model_config =SettingsConfigDict (env_file =".env",extra ="ignore")
 

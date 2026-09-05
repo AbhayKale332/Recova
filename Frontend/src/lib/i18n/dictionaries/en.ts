@@ -12,6 +12,7 @@ export const en = {
 
   nav: {
     console: "Console",
+    subscriptions: "Subscriptions",
     guardrails: "Guardrails",
     audit: "Audit",
     landing: "Overview",
@@ -308,6 +309,27 @@ export const en = {
     contribution: "{delta} pp",
     modelNote:
       "A starting rate per problem and playbook, adjusted for this case, sharpened by outcomes already observed.",
+  },
+
+  calendar: {
+    title: "Subscription calendar",
+    desc: "Every upcoming mandate debit, mapped to the day it's due.",
+    add: "Add subscription",
+    customer: "Customer",
+    plan: "Plan",
+    amount: "Amount (₹)",
+    nextDebit: "Next debit",
+    salaryDay: "Salary day",
+    mandateStatus: "Mandate status",
+    retries: "Retries",
+    save: "Save",
+    saving: "Saving…",
+    more: "+{count} more",
+    category: {
+      paid: "Recovered",
+      pending: "Upcoming",
+      sent: "Outreach sent",
+    },
   },
 
   landing: { comingSoon: "Overview" },

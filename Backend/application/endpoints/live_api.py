@@ -124,6 +124,13 @@ def list_artifacts(session_id: str, db: Session = Depends(get_db)) -> list[dict[
     return session.list_artifacts(db)
 
 
+@router.post("/{session_id}/artifacts/check-status")
+def check_payment_status(session_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """On-demand reconcile, for the voice agent's `check_payment_status` tool."""
+    session = _require(session_id)
+    return session.check_latest_payment_status(db)
+
+
 @router.post("/{session_id}/artifacts/{artifact_id}/simulate-pay")
 def simulate_artifact_payment(
     session_id: str, artifact_id: int, db: Session = Depends(get_db)

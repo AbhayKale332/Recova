@@ -174,7 +174,7 @@ function Bubble({
  * "Pay now" anchor; a partial plan states both figures, since the artifact
  * itself only carries what is being asked for *now*, not the case's balance.
  */
-function ArtifactCard({
+export function ArtifactCard({
   sessionId,
   artifact,
   caseAmountInr,

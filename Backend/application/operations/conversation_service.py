@@ -73,12 +73,16 @@ failure_class :int ,
 name :str ,
 amount_inr :float ,
 persona :dict ,
+agent_name :str ="Rekha",
 )->CallBeat :
     """A short AI-voice-agent call transcript for a transaction (per class).
 
     Used by the on-demand "Call" action so any transaction can be called, not
     only the seeded ones. The transcript is what the simulated agent would say;
     a live provider (Vapi / ElevenLabs / LiveKit) replaces this later.
+
+    ``agent_name`` is female (Rekha by default) - every verb here is
+    feminine-conjugated Hindi ("bol rahi hoon", not "bol raha hoon").
     """
     rupees =f"₹{int (amount_inr ):,}"
     greet =persona ["greet"]
@@ -86,27 +90,27 @@ persona :dict ,
 
     scripts ={
     1 :[
-    (CallSpeaker .AGENT ,f"Namaste {first } {greet }, support team se bol raha hoon. Aapke {rupees } payment mein ek technical glitch aa gaya tha — humari taraf se. Main abhi ek secure link bhej raha hoon.",0 ),
+    (CallSpeaker .AGENT ,f"Namaste {first } {greet }, main {agent_name } support team se bol rahi hoon. Aapke {rupees } payment mein ek technical glitch aa gaya tha — humari taraf se. Main abhi ek secure link bhej rahi hoon.",0 ),
     (CallSpeaker .CUSTOMER ,"Haan theek hai, bhej do.",5 ),
     (CallSpeaker .AGENT ,"Bhej diya. Ek tap mein ho jayega, OTP ki zaroorat nahi.",11 ),
     (CallSpeaker .CUSTOMER ,"Ok, kar deta hoon.",16 ),
     ],
     2 :[
-    (CallSpeaker .AGENT ,f"Hello {first } {greet }, aapka {rupees } ka checkout OTP step pe ruk gaya tha. Main UPI Autopay ka ek 1-tap link bhej raha hoon.",0 ),
+    (CallSpeaker .AGENT ,f"Hello {first } {greet }, main {agent_name } bol rahi hoon. Aapka {rupees } ka checkout OTP step pe ruk gaya tha. Main UPI Autopay ka ek 1-tap link bhej rahi hoon.",0 ),
     (CallSpeaker .CUSTOMER ,"Achha, wahi problem ho rahi thi.",6 ),
     (CallSpeaker .AGENT ,"Koi baat nahi, is link se seedha ho jayega. Bhej diya WhatsApp pe.",12 ),
     (CallSpeaker .CUSTOMER ,"Perfect, dekh leta hoon.",18 ),
     ],
     3 :[
-    (CallSpeaker .AGENT ,f"Namaste {first } {greet }, aapka auto-pay mandate refresh karna tha. Ek chhota ₹2 test authorization bhej rahe hain.",0 ),
+    (CallSpeaker .AGENT ,f"Namaste {first } {greet }, main {agent_name } bol rahi hoon. Aapka auto-pay mandate refresh karna tha. Ek chhota ₹2 test authorization bhej rahe hain.",0 ),
     (CallSpeaker .CUSTOMER ,"Haan bhej do.",6 ),
     (CallSpeaker .AGENT ,f"Ho gaya, mandate active hai. Salary date pe {rupees } apne aap cut ho jayega.",12 ),
     (CallSpeaker .CUSTOMER ,"Badhiya, dhanyavaad.",19 ),
     ],
     4 :[
-    (CallSpeaker .AGENT ,f"Namaste {first } {greet }, invoice ke {rupees } outstanding ke baare mein call kiya tha. Payment kab tak expect kar sakte hain?",0 ),
+    (CallSpeaker .AGENT ,f"Namaste {first } {greet }, main {agent_name } bol rahi hoon. Invoice ke {rupees } outstanding ke baare mein call kiya tha. Payment kab tak expect kar sakte hain?",0 ),
     (CallSpeaker .CUSTOMER ,persona ["p2p"],7 ),
-    (CallSpeaker .AGENT ,"Bilkul, main note kar leta hoon aur tab tak reminders rok deta hoon. Dhanyavaad!",14 ),
+    (CallSpeaker .AGENT ,"Bilkul, main note kar leti hoon aur tab tak reminders rok deti hoon. Dhanyavaad!",14 ),
     ],
     }
     turns =[CallTurnBeat (sp ,txt ,off )for sp ,txt ,off in scripts .get (failure_class ,scripts [1 ])]
@@ -184,7 +188,7 @@ salary_date :str ,
             t .call =CallBeat (
             status =CallStatus .COMPLETED ,duration_sec =38 ,outcome ="mandate_refreshed",
             turns =[
-            CallTurnBeat (CallSpeaker .AGENT ,f"Namaste {name } {persona ['greet']}, main support team se bol raha hoon. Aapka auto-pay mandate refresh karna tha, ek chhota sa ₹2 test authorization bhej rahe hain.",0 ),
+            CallTurnBeat (CallSpeaker .AGENT ,f"Namaste {name } {persona ['greet']}, main Rekha bol rahi hoon. Aapka auto-pay mandate refresh karna tha, ek chhota sa ₹2 test authorization bhej rahe hain.",0 ),
             CallTurnBeat (CallSpeaker .CUSTOMER ,"Haan theek hai, bhej do.",6 ),
             CallTurnBeat (CallSpeaker .AGENT ,"Ho gaya, mandate active hai. Salary date pe {rupees} apne aap cut ho jayega.".replace ("{rupees}",rupees ),12 ),
             CallTurnBeat (CallSpeaker .CUSTOMER ,"Perfect, dhanyavaad.",20 ),
