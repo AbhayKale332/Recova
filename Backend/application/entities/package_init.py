@@ -9,6 +9,7 @@ from application .entities .handled_event import ProcessedEvent
 from application .entities .payment_artifact import PaymentArtifact
 from application .entities .transaction_record import TransactionState
 from application .entities .saved_scenario import SavedScenario
+from application .entities .usage_counter import DailyApiUsage
 
 __all__ =[
 "AuditTrail",
@@ -21,4 +22,5 @@ __all__ =[
 "ProcessedEvent",
 "TransactionState",
 "SavedScenario",
+"DailyApiUsage",
 ]

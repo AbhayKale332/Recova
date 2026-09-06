@@ -150,6 +150,83 @@ def add_message(
     return message
 
 
+_SEED_NUDGE_TEXT = (
+    "Hi {name}, just a reminder about your pending payment — you can finish it whenever you're ready.",
+    "Hi {name}, following up again on the payment. Tell me if something isn't working and I'll help.",
+    "Hi {name}, checking in once more — happy to send a fresh link or answer any questions.",
+    "Hi {name}, still holding this open for you. A quick tap on the link is all it takes.",
+    "Hi {name}, one more nudge on the outstanding payment — I'm here if you need anything.",
+)
+
+
+def _seed_prior_interventions(
+    db: Session,
+    transaction_id: str,
+    *,
+    whatsapp_nudges: int = 0,
+    voice_attempts: int = 0,
+    customer_name: str = "there",
+) -> None:
+    """Replay the history an authored case's "already used" counters imply.
+
+    A live run from an authored case otherwise starts with an empty audit trail,
+    so its "voice calls already made" and "messages already sent" fields had no
+    effect on the run. Here each one becomes the same ``INTERVENTION_DISPATCH``
+    audit row a real prior attempt would have left — which is what the voice cap
+    (``voice_attempts.py``), the WhatsApp nudge cap (``message_attempts.py``),
+    and the bounds gauge (``_bounds``) all read. Each seeded nudge also gets a
+    thread message so the transcript shows the outreach that already happened.
+    """
+    nudges = max(0, min(int(whatsapp_nudges), 5))
+    calls = max(0, min(int(voice_attempts), 5))
+
+    for i in range(nudges):
+        add_message(
+            db,
+            transaction_id,
+            MessageDirection.OUTBOUND,
+            MessageSender.AGENT,
+            _SEED_NUDGE_TEXT[min(i, len(_SEED_NUDGE_TEXT) - 1)].format(name=customer_name),
+            {"seeded": True},
+        )
+        record_audit(
+            db,
+            transaction_id=transaction_id,
+            node_name=NodeName.EXECUTE_INTERVENTION,
+            action_type=ActionType.INTERVENTION_DISPATCH,
+            payload={
+                "action": InterventionAction.SEND_WHATSAPP.value,
+                "channel": InterventionChannel.WHATSAPP.value,
+                "seeded": True,
+            },
+            outcome=Outcome.SUCCESS,
+        )
+
+    for _ in range(calls):
+        db.add(
+            CallSession(
+                transaction_id=transaction_id,
+                status=CallStatus.COMPLETED,
+                duration_sec=0,
+                outcome=None,
+                provider=None,  # null == simulated, per CallSession's contract
+            )
+        )
+        record_audit(
+            db,
+            transaction_id=transaction_id,
+            node_name=NodeName.EXECUTE_INTERVENTION,
+            action_type=ActionType.INTERVENTION_DISPATCH,
+            payload={
+                "action": InterventionAction.VOICE_CALL.value,
+                "channel": InterventionChannel.VOICE.value,
+                "seeded": True,
+            },
+            outcome=Outcome.SUCCESS,
+        )
+    db.commit()
+
+
 def _bounds(
     db: Session,
     txn: TransactionState,
@@ -333,7 +410,6 @@ class LiveSession:
             db,
             self.transaction_id,
             failure_class=fc,
-            voice_attempts=0,
             now_ist=self.clock(),
             model_router=_DeterministicOpeningRouter(_tool_for_playbook(playbook)),
         )
@@ -1045,6 +1121,18 @@ def create_session(
     if owns:
         db.add(txn)
     db.commit()
+
+    # An authored case can begin mid-sequence: its "voice calls already made"
+    # and "messages already sent" counters are replayed here as the prior audit
+    # rows a real run would have left, so the caps and the bounds gauge see them.
+    if custom_case is not None:
+        _seed_prior_interventions(
+            db,
+            txn.transaction_id,
+            whatsapp_nudges=getattr(planned, "whatsapp_nudges_used", 0),
+            voice_attempts=planned.voice_attempts,
+            customer_name=str(meta.get("customer_name") or "there"),
+        )
 
     # An authored case's clock_ist ("HH:MM") freezes this session's compliance
     # clock at that time of day today, so a demo can deliberately show TRAI

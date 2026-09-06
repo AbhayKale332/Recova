@@ -62,6 +62,10 @@ class CustomCase (BaseModel ):
     reply :ReplyKind |None =None
     retries_used :int =Field (0 ,ge =0 ,le =5 )
     voice_attempts :int =Field (0 ,ge =0 ,le =5 )
+    # WhatsApp nudges already sent before this run starts. Seeded as prior
+    # INTERVENTION_DISPATCH audit rows by create_session, so a live run can begin
+    # mid-sequence - e.g. at the nudge cap, where the agent's next move is a call.
+    whatsapp_nudges_used :int =Field (0 ,ge =0 ,le =5 )
     days_overdue :int |None =Field (None ,ge =0 ,le =365 )
     outcome_event :str |None =Field (None ,max_length =64 )
     playbook :str |None =Field (None ,max_length =64 )
@@ -191,6 +195,7 @@ class PlannedCase :
     probability :probability .CaseProbability
     playbook :str |None =None
     clock_ist :str |None =None
+    whatsapp_nudges_used :int =0
 
     @property
     def amount_inr (self )->float :
@@ -350,6 +355,7 @@ def plan (scenario :Scenario ,run_id :str )->list [PlannedCase ]:
         reply_text =reply_text ,
         retries_used =custom .retries_used ,
         voice_attempts =custom .voice_attempts ,
+        whatsapp_nudges_used =custom .whatsapp_nudges_used ,
         outcome_event =outcome_event ,
         days_overdue =days_overdue ,
         probability =estimate ,

@@ -129,6 +129,41 @@ def test_continue_has_converse_route_then_one_decision(client, monkeypatch):
     assert any(event == "decision" and data["tool"] == "SEND_WHATSAPP" for event, data in queued)
 
 
+def test_authored_case_at_the_nudge_cap_opens_with_a_voice_call(client, monkeypatch):
+    class FakeRouter:
+        def call(self, task, prompt, **kwargs):
+            route = explain_route(task, **kwargs)
+            if task == "CONVERSE":
+                return RoutedResult("Understood, I'll help.", route)
+            return RoutedResult(json.dumps({"tool": "SEND_WHATSAPP", "reason": "Keep nudging."}), route)
+
+    monkeypatch.setattr(agent_tools, "router", FakeRouter())
+
+    case = _case()
+    case["failure_class"] = 2  # Checkout abandonment: opening playbook is a WhatsApp nudge.
+    case["whatsapp_nudges_used"] = 3
+    case["voice_attempts"] = 1
+    created = client.post("/api/v1/live/sessions", json={"custom_case": case}).json()
+
+    # The "already used" counters are replayed as prior dispatches on the case.
+    detail = client.get(f"/api/v1/transactions/{created['transaction_id']}").json()
+    dispatched = [a for a in detail["audit_trail"] if a["action_type"] == "INTERVENTION_DISPATCH"]
+    assert sum(1 for a in dispatched if a["payload"].get("channel") == "WHATSAPP") == 3
+    assert sum(1 for a in dispatched if a["payload"].get("channel") == "VOICE") == 1
+
+    client.post(f"/api/v1/live/sessions/{created['session_id']}/reply", json={"text": "hi"})
+    session = get_session(created["session_id"])
+    queued = []
+    while not session.queue.empty():
+        item = session.queue.get_nowait()
+        if item is not None:
+            queued.append(item)
+
+    decisions = [data for event, data in queued if event == "decision"]
+    assert decisions and decisions[0]["tool"] == "VOICE_CALL"
+    assert any(event == "call_offer" for event, _ in queued)
+
+
 def test_sse_event_names_are_ordered_and_delete_closes_session(client):
     created = client.post("/api/v1/live/sessions", json={"custom_case": _case()}).json()
     client.post(

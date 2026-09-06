@@ -21,6 +21,13 @@ class Settings (BaseSettings ):
     cors_origins :str ="http://localhost:3000"
 
 
+    # Global cap on billable API calls per IST calendar day, shared across all
+    # callers. Health checks, CORS preflight, the docs routes and inbound
+    # Razorpay webhooks are exempt. Set rate_limit_enabled=false to turn off.
+    rate_limit_enabled :bool =True
+    daily_request_limit :int =50
+
+
     encryption_key :str =""
 
 
