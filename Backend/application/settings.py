@@ -25,7 +25,7 @@ class Settings (BaseSettings ):
     # callers. Health checks, CORS preflight, the docs routes and inbound
     # Razorpay webhooks are exempt. Set rate_limit_enabled=false to turn off.
     rate_limit_enabled :bool =True
-    daily_request_limit :int =50
+    daily_request_limit :int =200
 
 
     encryption_key :str =""
