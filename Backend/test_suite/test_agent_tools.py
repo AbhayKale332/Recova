@@ -6,15 +6,19 @@ from datetime import date, datetime
 import pytest
 
 from application.constants import (
+    ActionType,
     FailureClass,
     InterventionAction,
     InterventionChannel,
+    NodeName,
+    Outcome,
     StoppingRule,
     TransactionLifecycleState,
 )
 from application.entities import TransactionState
 from application.helpers import IST, next_salary_window
 from application.operations.agent_tools import AgentTool, decide_tool
+from application.operations.audit_service import record_audit
 from application.operations.model_router import ProviderUnavailable, RoutedResult, explain_route
 from application.operations.policy_repository import update_policy
 
@@ -162,6 +166,58 @@ def test_stop_cancels(db_session):
     )
     assert decision.terminal_state == TransactionLifecycleState.CANCELLED
     assert decision.allowed is True
+
+
+def _seed_whatsapp_nudges(db, count, transaction_id="agent_1"):
+    for _ in range(count):
+        record_audit(
+            db,
+            transaction_id=transaction_id,
+            node_name=NodeName.EXECUTE_INTERVENTION,
+            action_type=ActionType.INTERVENTION_DISPATCH,
+            payload={"action": "SEND_WHATSAPP", "channel": InterventionChannel.WHATSAPP.value},
+            outcome=Outcome.SUCCESS,
+        )
+
+
+def test_third_whatsapp_nudge_auto_escalates_to_a_voice_call(db_session):
+    _seed(db_session, failure_class=FailureClass.CHECKOUT_ABANDONMENT)
+    _seed_whatsapp_nudges(db_session, 3)
+    decision = decide_tool(
+        db_session,
+        "agent_1",
+        model_router=FakeRouter({"tool": "SEND_WHATSAPP", "reason": "Nudge again."}),
+        now_ist=datetime(2026, 9, 5, 11, 0, tzinfo=IST),
+    )
+    assert decision.tool == AgentTool.VOICE_CALL
+    assert decision.channel == InterventionChannel.VOICE
+    assert decision.allowed is True
+    assert "Auto-escalated" in decision.model_reason
+
+
+def test_two_whatsapp_nudges_do_not_escalate(db_session):
+    _seed(db_session, failure_class=FailureClass.CHECKOUT_ABANDONMENT)
+    _seed_whatsapp_nudges(db_session, 2)
+    decision = decide_tool(
+        db_session,
+        "agent_1",
+        model_router=FakeRouter({"tool": "SEND_WHATSAPP", "reason": "Nudge again."}),
+        now_ist=datetime(2026, 9, 5, 11, 0, tzinfo=IST),
+    )
+    assert decision.tool == AgentTool.SEND_WHATSAPP
+
+
+def test_nudge_cap_does_not_override_when_voice_attempts_exhausted(db_session):
+    _seed(db_session, failure_class=FailureClass.CHECKOUT_ABANDONMENT)
+    _seed_whatsapp_nudges(db_session, 3)
+    decision = decide_tool(
+        db_session,
+        "agent_1",
+        voice_attempts=2,
+        model_router=FakeRouter({"tool": "SEND_WHATSAPP", "reason": "Nudge again."}),
+        now_ist=datetime(2026, 9, 5, 11, 0, tzinfo=IST),
+    )
+    assert decision.tool == AgentTool.SEND_WHATSAPP
 
 
 def test_provider_unavailable_uses_class_default(db_session):

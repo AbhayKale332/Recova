@@ -9,6 +9,7 @@ from application .constants import StoppingRule
 
 RBI_MAX_RETRIES =3
 VOICE_ATTEMPT_CAP =2
+WHATSAPP_NUDGE_CAP =3
 QUIET_HOURS_START =20
 QUIET_HOURS_END =9
 
@@ -87,6 +88,17 @@ def retry_cap_exceeded (retry_count :int ,max_retries :int =RBI_MAX_RETRIES )->b
 def voice_attempts_exhausted (attempts :int ,cap :int =VOICE_ATTEMPT_CAP )->bool :
     """True once the voice-attempt cap for the rolling window is reached."""
     return attempts >=cap
+
+
+def whatsapp_nudges_exhausted (nudges :int ,cap :int =WHATSAPP_NUDGE_CAP )->bool :
+    """True once the agent has sent ``cap`` WhatsApp nudges without recovering.
+
+    This is not a stopping rule - it does not halt the case. It is the point at
+    which a further text nudge stops being worth sending, so the agent escalates
+    the next contact to a voice call on its own (still subject to quiet hours and
+    the voice-attempt cap).
+    """
+    return nudges >=cap
 
 
 def is_within_quiet_hours (dt_ist :datetime )->bool :

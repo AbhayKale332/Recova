@@ -139,6 +139,7 @@ coverage/
 
 # Python environment helpers
 .python-version
+!Backend/.python-version
 __pypackages__/
 
 # ---------- Package managers ----------

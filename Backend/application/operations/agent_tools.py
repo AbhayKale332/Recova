@@ -39,10 +39,13 @@ from application.operations import policy_repository
 from application.operations.audit_service import record_audit
 from application.operations.compliance_rules import (
     VOICE_ATTEMPT_CAP,
+    WHATSAPP_NUDGE_CAP,
     is_within_quiet_hours,
     retry_cap_exceeded,
     voice_attempts_exhausted,
+    whatsapp_nudges_exhausted,
 )
+from application.operations.message_attempts import whatsapp_nudge_count
 from application.operations.playbook_map import DEFAULT_PLAYBOOK, PLAYBOOK_ACTION
 from application.operations.escalation_service import enqueue_escalation
 from application.operations.model_router import (
@@ -195,6 +198,7 @@ def _decide_prompt(
     *,
     policy: dict[str, Any],
     voice_attempts: int,
+    whatsapp_nudges: int = 0,
     recent_messages: list[str] | None = None,
     repayment: Any | None = None,
 ) -> str:
@@ -206,6 +210,9 @@ def _decide_prompt(
         f"The transaction amount is ₹{txn.amount_minor / 100:,.2f}.",
         f"Retries already used: {txn.retry_count} of {txn.max_retries}.",
         f"Voice attempts already used: {voice_attempts} of {VOICE_ATTEMPT_CAP}.",
+        f"WhatsApp nudges already sent: {whatsapp_nudges} of {WHATSAPP_NUDGE_CAP}. "
+        f"Once {WHATSAPP_NUDGE_CAP} nudges have gone out without payment, prefer VOICE_CALL "
+        f"over another SEND_WHATSAPP.",
         f"The merchant policy discount cap is {policy['max_discount_pct']}%.",
     ]
     if repayment is not None:
@@ -554,6 +561,7 @@ def decide_tool(
     fc = FailureClass(failure_class if failure_class is not None else txn.failure_class)
     policy = policy_repository.get_policy(db)
     attempts = voice_attempt_count(db, transaction_id, voice_attempts)
+    nudges = whatsapp_nudge_count(db, transaction_id)
     amount_inr = float(txn.amount_minor) / 100
     active_router = model_router or router
     recent = _recent_thread(db, transaction_id)
@@ -580,7 +588,13 @@ def decide_tool(
     )
 
     prompt = _decide_prompt(
-        txn, fc, policy=policy, voice_attempts=attempts, recent_messages=recent, repayment=repayment
+        txn,
+        fc,
+        policy=policy,
+        voice_attempts=attempts,
+        whatsapp_nudges=nudges,
+        recent_messages=recent,
+        repayment=repayment,
     )
     route_discount = proposed_discount_pct if proposed_discount_pct is not None else discount_pct
     route_kwargs = {
@@ -628,6 +642,37 @@ def decide_tool(
     model_reason = str(payload.get("reason") or "")
     message = payload.get("message")
     message = str(message) if message is not None else None
+
+    # After three WhatsApp nudges without payment, the agent switches the next
+    # contact to a voice call on its own - the operator no longer has to ask for
+    # it. This is a deterministic override of the model proposal, not a stopping
+    # rule: quiet hours and the voice-attempt cap still bind in gate_tool below,
+    # and if a call is not permitted there the case escalates to a human. Only a
+    # plain SEND_WHATSAPP nudge is redirected; a payment link, partial plan, or
+    # deliberate handoff/stop is left alone. Voice must be a permitted channel,
+    # and a voice attempt must still be available.
+    voice_is_permitted = (
+        InterventionChannel.VOICE.value in policy.get("allowed_channels", [])
+        and InterventionAction.VOICE_CALL.value in policy.get("allowed_actions", [])
+    )
+    if (
+        proposed_tool == AgentTool.SEND_WHATSAPP
+        and whatsapp_nudges_exhausted(nudges)
+        and not voice_attempts_exhausted(attempts)
+        and voice_is_permitted
+    ):
+        logger.info(
+            "WhatsApp nudge cap reached (%d of %d) for %s; auto-escalating this turn to VOICE_CALL.",
+            nudges,
+            WHATSAPP_NUDGE_CAP,
+            transaction_id,
+        )
+        proposed_tool = AgentTool.VOICE_CALL
+        model_reason = (
+            f"Auto-escalated to a voice call: {nudges} WhatsApp nudges already sent "
+            f"without payment (cap {WHATSAPP_NUDGE_CAP})."
+            + (f" Model rationale for continued contact: {model_reason}" if model_reason else "")
+        )
     raw_discount = payload.get("discount_pct", route_discount)
     # Preserve an integer percentage so PolicySandbox's user-facing sentence
     # remains exactly "Discount 20% ...", rather than changing it to 20.0%.
