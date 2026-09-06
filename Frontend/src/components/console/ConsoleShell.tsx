@@ -25,7 +25,7 @@ const DESTINATIONS = [
 export function ConsoleShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const pathname = usePathname();
-  const { run, seed, seeding } = useConsole();
+  const { run } = useConsole();
   // The top bar reports the run in progress, not a stored total — there is no
   // standing figure to show until the user has run something.
   const complete = run.complete;
@@ -73,14 +73,6 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <LocaleToggle />
-            <button
-              type="button"
-              onClick={seed}
-              disabled={seeding}
-              className="hidden rounded border border-[var(--border)] px-2 py-1 text-[12px] font-medium transition-colors duration-150 hover:border-neutral-400 disabled:opacity-60 sm:block"
-            >
-              {seeding ? t.actions.reseeding : t.actions.reseed}
-            </button>
           </div>
         </div>
 

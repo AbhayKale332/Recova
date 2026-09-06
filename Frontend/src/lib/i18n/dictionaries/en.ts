@@ -23,10 +23,6 @@ export const en = {
   actions: {
     refresh: "Refresh",
     refreshing: "Refreshing…",
-    reseed: "Reseed demo",
-    reseeding: "Reseeding…",
-    seed: "Seed the demo batch",
-    seeding: "Seeding…",
     retry: "Try again",
     close: "Close",
     cancel: "Cancel",
@@ -45,9 +41,6 @@ export const en = {
     emptyTitle: "Nothing here yet",
     emptyBody: "No records match.",
     errorTitle: "Couldn't load this",
-    unseededTitle: "The database is empty",
-    unseededBody:
-      "Recova has no cases to work yet. Seed the demo batch to populate transactions, audit trail and metrics.",
     offlineTitle: "Backend unreachable",
     offlineBody:
       "Nothing answered at the API base URL. Start the FastAPI server, then try again.",
@@ -187,8 +180,6 @@ export const en = {
     network: "Couldn't reach the backend at {base}.",
     aborted: "Request cancelled.",
     unknown: "Something failed and the backend gave no reason.",
-    seedFailed: "Couldn't seed the demo batch.",
-    seedOk: "Seeded {count} transactions.",
   },
 
   /**
@@ -417,7 +408,8 @@ export const en = {
     filterPlaceholder: "Transaction ID",
     apply: "Filter",
     clear: "Clear",
-    empty: "No audit rows yet. Run a batch or seed the demo.",
+    empty: "No audit rows yet",
+    emptyBody: "Run a batch from the console — every node the engine passes through writes its row here.",
     entries: "{count} entries",
     oneEntry: "1 entry",
     colWhen: "When",

@@ -8,6 +8,12 @@ An AI agent that **detects** revenue at risk, **diagnoses** why it failed, runs 
 
 *Built for the Razorpay Buildathon — Track 03: AI Revenue Recovery.*
 
+**[▶ Open the live console](https://recova-v1.vercel.app/console)** · **[🎬 Watch the 3-min demo](https://youtu.be/E8sgaEjsF3k)** · **[💳 Real Razorpay capture](#-proof-it-works-on-real-razorpay-infrastructure)** · **[✅ Track 03 map](#-track-03-requirement-by-requirement)**
+
+<a href="https://youtu.be/E8sgaEjsF3k"><img src="https://img.youtube.com/vi/E8sgaEjsF3k/maxresdefault.jpg" alt="Recova — 3-minute demo" width="720"/></a>
+
+<sub>The console, running. Or <a href="https://recova-v1.vercel.app/console">open it yourself</a> — nothing to install.</sub>
+
 <br/>
 
 ![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
@@ -17,8 +23,13 @@ An AI agent that **detects** revenue at risk, **diagnoses** why it failed, runs 
 ![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react&logoColor=black)
 ![Tailwind](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-285%20passing-3fb950)
+![Tests](https://img.shields.io/badge/tests-377%20passing-3fb950)
 ![LLM](https://img.shields.io/badge/LLM-advisory%20only-8957e5)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
+[![Live console](https://img.shields.io/badge/live-console-000000?logo=vercel&logoColor=white)](https://recova-v1.vercel.app/console)
+[![API](https://img.shields.io/badge/live-API%20docs-009688?logo=fastapi&logoColor=white)](https://recova-production-4531.up.railway.app/docs)
+[![Demo video](https://img.shields.io/badge/demo-3%20min-FF0000?logo=youtube&logoColor=white)](https://youtu.be/E8sgaEjsF3k)
 
 </div>
 
@@ -28,14 +39,15 @@ An AI agent that **detects** revenue at risk, **diagnoses** why it failed, runs 
 
 | | | |
 |---|---|---|
-| [The core idea](#-the-core-idea) | [The problem](#-the-problem-track-03) | [The story](#-the-story-meena--shashank) |
+| [See it in 60 seconds](#-see-it-in-60-seconds) | [The core idea](#-the-core-idea) | [Proof on real Razorpay](#-proof-it-works-on-real-razorpay-infrastructure) |
+| [The problem](#-the-problem-track-03) | [Track 03, requirement by requirement](#-track-03-requirement-by-requirement) | [The story](#-the-story-meena--shashank) |
 | [What makes Recova different](#-what-makes-recova-different) | [The four failure classes](#-the-four-failure-classes) | [Architecture](#-architecture) |
 | [The recovery decision graph](#-the-recovery-decision-graph) | [Guardrails & stopping rules](#-guardrails--stopping-rules-the-spine) | [The model-free boundary](#-the-model-free-boundary) |
 | [The cost-aware LLM router](#-the-cost-aware-llm-router) | [The simulation engine](#-the-simulation-engine-the-console-produces-money-it-doesnt-report-it) | [The projection model](#-the-projection-model-measured--projected--deferred) |
 | [The live theatre](#-the-live-theatre-sse) | [Hinglish voice recovery](#-hinglish-voice-recovery) | [The private Razorpay MCP](#-the-private-razorpay-mcp) |
 | [The audit trail](#-the-audit-trail) | [Frontend](#-frontend-make-the-money-undeniable) | [API surface](#-api-surface) |
 | [Tech stack](#-tech-stack) | [Getting started](#-getting-started) | [Testing](#-testing) |
-| [Repo layout](#-repo-layout) | [Known limitations](#-known-limitations--debt) | |
+| [Repo layout](#-repo-layout) | | |
 
 ---
 
@@ -48,6 +60,58 @@ Every run ends in one generated, plain-language line of the form:
 Every value in it is computed from that run — the money is what the engine actually drove to `RECOVERED`, the counts come from the audit trail. **Nothing is stored or hardcoded.** You supply a scenario, press Run, and N cases stream through the same LangGraph engine that would run in production; the number you see is the number the code produced, and you can change the inputs and watch it move.
 
 That is the whole point: *money recovered*, demonstrated live and falsifiable — not *revenue risk identified*.
+
+---
+
+## ⏱ See it in 60 seconds
+
+Nothing to install. The console is deployed and the backend is live.
+
+| | |
+|---|---|
+| 🖥 **Console** | <https://recova-v1.vercel.app/console> |
+| ⚙️ **API + interactive docs** | <https://recova-production-4531.up.railway.app/docs> |
+| 🎬 **3-minute walkthrough** | <https://youtu.be/E8sgaEjsF3k> |
+
+**The judge path — four steps, about a minute:**
+
+1. Open the console → preset **"Month-end mandate crunch"** → **Run**. 200 cases stream through the real LangGraph engine concurrently, in ~3.1s. The clock is pinned to 21:40 IST, so watch TRAI quiet hours defer every outbound channel while the salary-window retry still goes ahead.
+2. Read the generated line: *Recova recovered **₹X** of **₹Y** across **N** cases — **e** escalated to a human, **s** stopped by policy.* Every number in it was produced by that run.
+3. Open any case → the **bounds gauge** shows which limits are spent and which rule halts it next; the decision trace shows the code path that produced the reason, and the audit timeline shows the rows it wrote.
+4. **Now falsify it.** In the scenario form, change **retries already used** from `1` to `3` and press Run again. Those mandates have now spent all three RBI-permitted auto-debit retries, so the engine refuses to attempt a fourth — and the recovered figure collapses. Set it back to `0` and the money returns.
+
+> Step 4 is the one that matters. A number sitting in a database can't do that. The recovered figure is a *function of the guardrails*, and you can move it from the form and watch it change.
+
+**Each preset is built to expose a different guardrail**, so clicking through all four tells the whole compliance story without filling in anything:
+
+| Preset | The guardrail it puts on screen |
+|---|---|
+| **Month-end mandate crunch** | `TRAI_QUIET_HOURS` — defers outbound contact at 21:40, exempts the channel-less retry |
+| **Receivables chase** | `DISPUTE_FREEZE` — an aged B2B book where disputes escalate to a human instead of automating |
+| **Mixed book, tight policy** | `PolicySandbox` — discount cap at zero, voice switched off; forbidden actions escalate rather than dispatch |
+| **Retry budget exhausted** | `RBI_MAX_RETRIES` — the engine stops itself rather than attempting a fourth debit |
+
+---
+
+## 💳 Proof it works on real Razorpay infrastructure
+
+A single recovery run, captured live in **Razorpay Test Mode**. The agent diagnosed a Class 1 failure, cleared every guardrail, and asked the MCP adapter to mint a payment link — which Razorpay created, hosted, and later reported as `captured`. Nothing here is mocked: the link, the short URL, and the `pay_…` id all live on Razorpay's servers.
+
+| # | What you're looking at | What it proves |
+|:--:|------------------------|----------------|
+| 1 | **The agent's WhatsApp nudge** — a Razorpay-hosted `rzp.io` short link, sent after `screen_user_message()` → quiet-hours → retry-cap → voice-cap → `PolicySandbox.validate()` all passed. The trailing *"Payment received — ₹4,200. Thank you!"* is the engine reconciling the webhook and closing the case as `RECOVERED`. | The full loop: guardrails → MCP dispatch → hosted link → capture → reconcile. |
+| 2 | **The Razorpay checkout** the customer opens. Note the reference line — *"Payment recovery for `sim_live_3b0_custom_0000`"* — that string is the agent's run id, passed straight into the `create_payment_link` call. | The link was minted by our code path, not created by hand in the dashboard. |
+| 3 | **`Payment Successful`** — Razorpay returns a genuine payment id (`pay_TYcWqaZdJQwZYA`) and timestamp. This is the `payment.captured` event that the webhook handler turns into a `RECOVERED` transition + audit row. | Money actually moved through the gateway; the "recovered" figure is a real capture. |
+
+<table>
+<tr>
+<td width="34%"><img src="docs/proof/01-agent-whatsapp-recovery.png" alt="Agent sends a Razorpay payment link over WhatsApp and reconciles the payment"/></td>
+<td width="33%"><img src="docs/proof/02-razorpay-checkout.png" alt="Razorpay Test Mode checkout showing the agent run id as the payment reference"/></td>
+<td width="33%"><img src="docs/proof/03-razorpay-payment-success.png" alt="Razorpay confirms payment captured with a real pay_ id"/></td>
+</tr>
+</table>
+
+**Reproduce it:** set `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` (test keys) and `RAZORPAY_WEBHOOK_SECRET` in `Backend/.env`, start the MCP server from `.Agents/mcp.json`, open `/live`, pick a Class 1 case, and reply to the nudge. The decision card shows every gate that armed; the payment artifact carries the live `rzp.io` link; `razorpay.com/support` will confirm the `pay_…` id.
 
 ---
 
@@ -84,6 +148,26 @@ flowchart LR
 
 ---
 
+## ✅ Track 03, requirement by requirement
+
+The brief asks for the whole progression, not just detection. Here is each clause, where it is implemented, and where you can watch it happen.
+
+| The brief asks for | Implemented in | Watch it |
+|---|---|---|
+| **Detect** revenue at risk | `workflow_nodes.ingest` · four-class taxonomy in `constants.FailureClass` | `/console` case list, filterable by class |
+| **Diagnose** the root cause | `operations/diagnosis_service.py` (routed, advisory; class default on failure) | case panel → diagnosis + confidence |
+| **Determine** the intervention | `recovery_graph` playbook → action resolution | case panel → decision trace + `RouterChip` |
+| **Execute** a *bounded* recovery workflow | `execute` node → quiet hours → retry cap → voice cap → `PolicySandbox.validate()` | `/live` decision card — every gate that armed |
+| **Compliant escalation** | `DISPUTE_FREEZE` → `escalation_queue`, rejected actions escalate rather than dispatch | `/console/guardrails` → escalation queue |
+| **Stop** on defined rules | 8 named rules in `constants.StoppingRule`, each emitting an audit row | bounds gauge · stopping-rule counts |
+| **Audit trail** | append-only `audit_trails`, single writer, structured payloads | `/console/audit` → grouped by node, CSV export |
+| **Money recovered, measured** | `simulation/runner.py` → the `complete` event's `recovered_inr` | the headline number on `/console` |
+| *Razorpay-native execution* | `integrations/razorpay_mcp.py` behind the deterministic gates | [real `pay_…` capture](#-proof-it-works-on-real-razorpay-infrastructure) |
+
+---
+
+---
+
 ## 📖 The story: Meena & Shashank
 
 The landing page (`/`) is a scroll-driven narrative — the human "why" before the operations console.
@@ -111,22 +195,32 @@ Different scale, **same leak**: failed payments, dropped checkouts, broken renew
 
 ## ✨ What makes Recova different
 
-The interesting decisions, each with its rationale (full decisions log in [`Progress.md`](Progress.md)):
+Three decisions carry the product. The other nine are folded below, each with its rationale (full decisions log in [`Progress.md`](Progress.md)):
 
 | # | Idea | Why it matters |
 |---|------|----------------|
 | 1️⃣ | **The console *produces* the money, it doesn't *report* it.** You type a scenario, press Run, and N cases stream through the real LangGraph engine concurrently. | A recovered figure already sitting in a database is indistinguishable from a hardcoded one. Inputs → run → measured outcome is falsifiable in a live demo; a dashboard read is not. |
 | 2️⃣ | **The LLM is advisory *everywhere*.** Two boundaries — `policy_guard.py` and `compliance_rules.py` — are deterministic and model-free. Provider choice changes phrasing, never whether money moves. | The product's core claim is that the reason on screen is the code that would run in production. A rogue or hallucinating model cannot dispatch a payment, exceed a cap, or override an opt-out. |
+| 6️⃣ | **Stopping rules are the spine, not a footnote.** Eight named, enumerated rules. Each one emits a structured audit row and is counted in the metrics, so a judge can see *which* rule halted *how many* workflows. | "Any system can send more messages. Ours knows when to stop." Restraint is the feature. |
+
+<details>
+<summary><b>Nine more decisions, each with its rationale</b></summary>
+
+<br/>
+
+| # | Idea | Why it matters |
+|---|------|----------------|
 | 3️⃣ | **A cost-aware LLM router.** Every advisory call picks a provider + capability tier per-call, and returns a human-readable `RouteDecision` explaining the choice. Stakes ≥ ₹25,000 or guardrail proximity auto-raise the tier. | The most expensive mistakes shouldn't run on the cheapest model — but batch drafting (the dominant token cost) shouldn't run on the most expensive one either. |
 | 4️⃣ | **Bayesian projection, not a fitted model.** Beta-Bernoulli posteriors per *(failure class × playbook × channel)* with hand-set, documented priors, plus a small logistic adjustment. Closed form, pure stdlib. | The only labelled outcomes in the DB were written by the seeder — training on them would just re-learn the seeder's constants and call it evidence. |
 | 5️⃣ | **Three numbers that are never summed:** *recovered* (measured), *projected* (modelled, with a 95% band), *deferred* (quiet-hours cases, neither won nor lost). | Two numbers that look like a contradiction destroy credibility in a live demo. The `complete` event explains the gap instead of hiding it. |
-| 6️⃣ | **Stopping rules are the spine, not a footnote.** Eight named, enumerated rules. Each one emits a structured audit row and is counted in the metrics, so a judge can see *which* rule halted *how many* workflows. | "Any system can send more messages. Ours knows when to stop." Restraint is the feature. |
 | 7️⃣ | **The model never sees the Razorpay MCP tool list.** The model proposes from a closed 7-tool `AgentTool` set; quiet hours → retry cap → voice cap → `PolicySandbox` run in that order; *only then* does the MCP adapter serve as payment transport. | An MCP server is an open tool surface. Keeping it behind the deterministic gates means the guardrails stay un-negotiable. |
 | 8️⃣ | **Real concurrency with measured throughput.** An `asyncio` worker pool, one SQLite session per worker thread, WAL mode. ~200 cases in ~3.1s, ~65 cases/sec, p95 ~280ms at 8 workers. | The batch is the scalability story, and the numbers are measured and streamed over SSE — not asserted. (The queue is in-process; it is not a distributed system.) |
 | 9️⃣ | **The clock is injected.** `OrchestratorDeps.clock` — tests and the seeder pin a fixed mid-morning IST clock; a simulation can ask *"what would the engine do at 21:40?"* | Without it the suite would start failing at 20:00 (quiet hours) and `POST /admin/seed` would produce a different batch depending on the wall clock. |
 | 🔟 | **Append-only audit trail.** `before_update` / `before_delete` SQLAlchemy listeners *raise*. Reasoning is stored as structured payload, not prose. One single writer: `record_audit()`. | The audit trail has to survive being examined after the fact. |
 | 1️⃣1️⃣ | **Hinglish voice recovery.** Transient Vapi assistant configs built per-call, personalised with case facts *and* live guardrail state (discount cap, voice attempts remaining). ElevenLabs + Vapi, Hindi + English. | Class 3 mandate failures recover better on a voice call than a text nudge — but the voice attempt cap is still a hard stop. |
 | 1️⃣2️⃣ | **Bilingual, build-enforced.** `en.ts` is the source of truth; `hi.ts` is typed as `Dictionary`, so a missing Hindi key **fails the build**. Opt-out phrase matching covers EN + Hinglish (`band karo`, `mat bhejo`, `rok do`). | An Indian payments product that only screens English opt-outs isn't compliant. |
+
+</details>
 
 ---
 
@@ -480,25 +574,8 @@ flowchart LR
 
 Config: `.Agents/mcp.json` runs `razorpay-mcp-server:latest` in Docker. Webhooks land at `POST /api/v1/webhooks/razorpay` with `processed_events` idempotency.
 
-### Proof it works — end to end, on real Razorpay infrastructure
+> 📸 This path has been exercised end to end against live Razorpay infrastructure — see [**Proof it works**](#-proof-it-works-on-real-razorpay-infrastructure) for the hosted link, the checkout, and the real `pay_…` capture.
 
-A single recovery run, captured live in **Razorpay Test Mode**. The agent diagnosed a Class 1 failure, cleared every guardrail, and asked the MCP adapter to mint a payment link — which Razorpay created, hosted, and later reported as `captured`. Nothing here is mocked: the link, the short URL, and the `pay_…` id all live on Razorpay's servers.
-
-| # | What you're looking at | What it proves |
-|:--:|------------------------|----------------|
-| 1 | **The agent's WhatsApp nudge** — a Razorpay-hosted `rzp.io` short link, sent after `screen_user_message()` → quiet-hours → retry-cap → voice-cap → `PolicySandbox.validate()` all passed. The trailing *"Payment received — ₹4,200. Thank you!"* is the engine reconciling the webhook and closing the case as `RECOVERED`. | The full loop: guardrails → MCP dispatch → hosted link → capture → reconcile. |
-| 2 | **The Razorpay checkout** the customer opens. Note the reference line — *"Payment recovery for `sim_live_3b0_custom_0000`"* — that string is the agent's run id, passed straight into the `create_payment_link` call. | The link was minted by our code path, not created by hand in the dashboard. |
-| 3 | **`Payment Successful`** — Razorpay returns a genuine payment id (`pay_TYcWqaZdJQwZYA`) and timestamp. This is the `payment.captured` event that the webhook handler turns into a `RECOVERED` transition + audit row. | Money actually moved through the gateway; the "recovered" figure is a real capture. |
-
-<table>
-<tr>
-<td width="34%"><img src="docs/proof/01-agent-whatsapp-recovery.png" alt="Agent sends a Razorpay payment link over WhatsApp and reconciles the payment"/></td>
-<td width="33%"><img src="docs/proof/02-razorpay-checkout.png" alt="Razorpay Test Mode checkout showing the agent run id as the payment reference"/></td>
-<td width="33%"><img src="docs/proof/03-razorpay-payment-success.png" alt="Razorpay confirms payment captured with a real pay_ id"/></td>
-</tr>
-</table>
-
-**Reproduce it:** set `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` (test keys) and `RAZORPAY_WEBHOOK_SECRET` in `Backend/.env`, start the MCP server from `.Agents/mcp.json`, open `/live`, pick a Class 1 case, and reply to the nudge. The decision card shows every gate that armed; the payment artifact carries the live `rzp.io` link; `razorpay.com/support` will confirm the `pay_…` id.
 
 ---
 
@@ -555,11 +632,13 @@ All routers mount under `/api/v1`.
 | **Assistant** | `POST /assistant/chat` · `POST /assistant/tts` |
 | **Stream** | `GET /stream/demo/{failure_class}` (SSE) |
 | **Webhooks** | `POST /webhooks/razorpay` |
-| **Admin** | `POST /admin/seed` ⚠️ wipes every table, no auth |
+| **Admin** | `POST /admin/seed` 🔒 truncates every table — requires `X-Admin-Token`, disabled unless `ADMIN_TOKEN` is set |
 
 </details>
 
-Interactive docs at `http://localhost:8000/docs`.
+Interactive docs at `http://localhost:8000/docs` — or live at <https://recova-production-4531.up.railway.app/docs>.
+
+> 🔒 **`POST /admin/seed` truncates every table**, bypassing the append-only audit guards via bulk delete. It is gated behind `ADMIN_TOKEN` and **fails closed**: with the variable unset the route returns `404` rather than running, so a deployment that forgets it loses its reset button instead of handing that button to the internet. With the variable set, the request must carry a matching `X-Admin-Token` header, compared in constant time. No client calls it — it is an operator's `curl`, never a button in a browser.
 
 ---
 
@@ -574,11 +653,13 @@ Interactive docs at `http://localhost:8000/docs`.
 | **Payments** | `razorpay 2.0` · private MCP server via `mcp>=1.12` over Docker/stdio |
 | **Voice** | Twilio 9.11 (WhatsApp) · Vapi · ElevenLabs — Hindi + English |
 | **Frontend** | Next.js 16.3 (App Router, typed routes) · React 19.2 · TypeScript strict · Tailwind v4 (CSS-first) · Framer Motion · `@vapi-ai/web` |
-| **Tests** | `pytest` (48 backend test files, ~285 passing, almost all offline) · `vitest` (frontend) |
+| **Tests** | `pytest` (47 backend test files, **377 passing in ~58s**, almost all offline) · `vitest` (frontend) |
 
 ---
 
 ## 🚀 Getting started
+
+> **You don't have to.** The console is live at <https://recova-v1.vercel.app/console> and the API at <https://recova-production-4531.up.railway.app/docs>. Run it locally only if you want to read the engine work.
 
 ### Prerequisites
 - Python **3.12+**, Node.js **20.9+**, npm
@@ -619,7 +700,18 @@ Dashboard at <http://localhost:3000>. Point `NEXT_PUBLIC_API_BASE` in `.env.loca
 
 ### 3. Seed a demo batch (optional)
 
-`POST /api/v1/admin/seed` — or just open `/console`, pick a sample scenario, and press **Run**. Seeded at-risk cases are pushed through the **real LangGraph**, so their audit trails are genuine.
+You almost certainly don't need this — open `/console`, pick a sample scenario, and press **Run**. The run drives the real LangGraph and writes genuine audit rows, so `/console/audit` fills from it; `/console/guardrails` reads the policy row that startup creates from `merchant_rules.json`.
+
+If you do want a stored book to look at, the seeder is an operator route, not a UI button:
+
+```bash
+# Backend/.env
+ADMIN_TOKEN=pick-something-long
+
+curl -X POST http://localhost:8000/api/v1/admin/seed -H "X-Admin-Token: pick-something-long"
+```
+
+Seeded at-risk cases are pushed through the **real LangGraph**, so their audit trails are genuine. Leave `ADMIN_TOKEN` unset and the route stays disabled.
 
 ### Environment variables
 
@@ -632,6 +724,7 @@ Runs locally on built-in defaults. Add to `Backend/.env` when you need providers
 | `ELEVENLABS_API_KEY`, `VAPI_API_KEY` | Voice |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET` | WhatsApp |
 | `ENCRYPTION_KEY`, `LIVE_MODE` | Fernet key + whether channels actually dispatch |
+| `ADMIN_TOKEN` | Enables `POST /admin/seed` and the header it demands. Unset = route disabled |
 
 Keep secrets out of source control.
 
@@ -641,7 +734,7 @@ Keep secrets out of source control.
 
 ```bash
 cd Backend
-uv run pytest          # ~285 passing, almost all offline (no network, fixed clock)
+uv run pytest          # 377 passing in ~58s, almost all offline (no network, fixed clock)
 ```
 
 ```bash
@@ -658,33 +751,36 @@ The suite pins a fixed mid-morning IST clock — without it, tests would start f
 ```
 Recova/
 ├── Backend/                      FastAPI + SQLAlchemy + LangGraph · SQLite · uv
-│   └── application/
-│       ├── server.py             ← entry point (NOT main.py)
-│       ├── constants.py          domain enums: FailureClass, StoppingRule, Playbook…
-│       ├── endpoints/            one router file per surface
-│       ├── entities/             SQLAlchemy ORM models
-│       ├── workflow/             the LangGraph DAG — recovery_graph · workflow_nodes · workflow_state
-│       ├── operations/           the services (everything interesting)
-│       │   ├── model_router.py       provider + tier + RouteDecision
-│       │   ├── policy_guard.py    🔒 model-free sandbox
-│       │   ├── compliance_rules.py 🔒 model-free stopping rules
-│       │   ├── diagnosis_service.py · message_drafter.py · assistant_service.py
-│       │   ├── agent_tools.py         closed AgentTool set + deterministic gates
-│       │   ├── batch_seed.py          the demo engine (real graph, genuine audits)
-│       │   ├── live_session.py        interactive theatre (in-process queue)
-│       │   ├── voice_agent.py         transient Vapi configs
-│       │   └── repayment_model.py     a demo learned model (logistic regression)
-│       ├── simulation/          scenario · probability · runner · trace · store
-│       ├── integrations/        Twilio · Vapi · razorpay_mcp (behind routing_dispatcher)
-│       ├── configuration/       merchant_rules.json — the default policy
-│       └── test_suite/          48 pytest files
+│   ├── application/
+│   │   ├── server.py             ← entry point (NOT main.py)
+│   │   ├── constants.py          domain enums: FailureClass, StoppingRule, Playbook…
+│   │   ├── endpoints/            one router file per surface
+│   │   ├── entities/             SQLAlchemy ORM models
+│   │   ├── workflow/             the LangGraph DAG — recovery_graph · workflow_nodes · workflow_state
+│   │   ├── operations/           the services (everything interesting)
+│   │   │   ├── model_router.py       provider + tier + RouteDecision
+│   │   │   ├── policy_guard.py       🔒 model-free sandbox
+│   │   │   ├── compliance_rules.py   🔒 model-free stopping rules
+│   │   │   ├── diagnosis_service.py · message_drafter.py · assistant_service.py
+│   │   │   ├── agent_tools.py        closed AgentTool set + deterministic gates
+│   │   │   ├── batch_seed.py         the demo engine (real graph, genuine audits)
+│   │   │   ├── live_session.py       interactive theatre (in-process queue)
+│   │   │   ├── voice_agent.py        transient Vapi configs
+│   │   │   └── repayment_model.py    a demo learned model (logistic regression)
+│   │   ├── simulation/           scenario · probability · runner · trace · store
+│   │   ├── integrations/         Twilio · Vapi · razorpay_mcp (behind routing_dispatcher)
+│   │   └── configuration/        merchant_rules.json — the default policy
+│   ├── test_suite/               47 pytest files · 377 passing
+│   └── railway.json              backend deploy config
 ├── Frontend/                     Next.js 16.3 · React 19 · Tailwind v4
 │   ├── src/app/                  landing · console · console/{guardrails,audit,subscriptions} · live
-│   ├── src/components/          console/ · sim/ · live/ · story/
-│   ├── src/lib/                 api · types · format · bounds (mirrors compliance_rules) · i18n/
-│   └── src/hooks/               useApi · useSimulationRun · useLiveSession
+│   ├── src/components/           console/ · sim/ · live/ · story/
+│   ├── src/lib/                  api · types · format · bounds (mirrors compliance_rules) · i18n/
+│   └── src/hooks/                useApi · useSimulationRun · useLiveSession
+├── docs/proof/                   the real Razorpay capture, screenshotted
 ├── .Agents/                      agent-facing docs, problem statement, mcp.json
 ├── Progress.md                   living status + decisions log (read this)
+├── LICENSE                       MIT
 └── README.md                     you are here
 ```
 

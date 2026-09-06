@@ -37,8 +37,6 @@ export function ConsoleScreen() {
     policy,
     run,
     start,
-    seed,
-    seeding,
   } = useConsole();
 
   const router = useRouter();
@@ -141,20 +139,7 @@ export function ConsoleScreen() {
           ) : null}
         </section>
       ) : (
-        <EmptyState
-          title={t.sim.idleTitle}
-          body={t.sim.idleBody}
-          action={
-            <button
-              type="button"
-              onClick={seed}
-              disabled={seeding}
-              className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] font-medium disabled:opacity-60"
-            >
-              {seeding ? t.actions.seeding : t.actions.seed}
-            </button>
-          }
-        />
+        <EmptyState title={t.sim.idleTitle} body={t.sim.idleBody} />
       )}
 
       {run.cases.length ? (

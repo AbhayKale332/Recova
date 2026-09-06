@@ -21,10 +21,6 @@ export const hi: Dictionary = {
   actions: {
     refresh: "रिफ़्रेश",
     refreshing: "रिफ़्रेश हो रहा है…",
-    reseed: "डेमो फिर से बनाएँ",
-    reseeding: "बनाया जा रहा है…",
-    seed: "डेमो बैच बनाएँ",
-    seeding: "बनाया जा रहा है…",
     retry: "फिर कोशिश करें",
     close: "बंद करें",
     cancel: "रद्द करें",
@@ -43,9 +39,6 @@ export const hi: Dictionary = {
     emptyTitle: "यहाँ अभी कुछ नहीं है",
     emptyBody: "कोई रिकॉर्ड मेल नहीं खाता।",
     errorTitle: "यह लोड नहीं हो सका",
-    unseededTitle: "डेटाबेस खाली है",
-    unseededBody:
-      "Recova के पास काम करने के लिए अभी कोई केस नहीं है। ट्रांज़ैक्शन, ऑडिट ट्रेल और मेट्रिक्स भरने के लिए डेमो बैच बनाएँ।",
     offlineTitle: "बैकएंड उपलब्ध नहीं",
     offlineBody:
       "API बेस URL पर कोई जवाब नहीं मिला। FastAPI सर्वर चालू करें, फिर दोबारा कोशिश करें।",
@@ -182,8 +175,6 @@ export const hi: Dictionary = {
     network: "{base} पर बैकएंड से संपर्क नहीं हो सका।",
     aborted: "अनुरोध रद्द किया गया।",
     unknown: "कुछ विफल हुआ और बैकएंड ने कोई कारण नहीं बताया।",
-    seedFailed: "डेमो बैच नहीं बन सका।",
-    seedOk: "{count} ट्रांज़ैक्शन बनाए गए।",
   },
 
   sim: {
@@ -407,7 +398,8 @@ export const hi: Dictionary = {
     filterPlaceholder: "ट्रांज़ैक्शन आईडी",
     apply: "फ़िल्टर करें",
     clear: "साफ़ करें",
-    empty: "अभी कोई ऑडिट पंक्ति नहीं। कोई बैच चलाएँ या डेमो सीड करें.",
+    empty: "अभी कोई ऑडिट पंक्ति नहीं",
+    emptyBody: "कंसोल से एक बैच चलाएँ — इंजन जिस भी नोड से गुज़रता है, उसकी पंक्ति यहाँ लिखी जाती है।",
     entries: "{count} प्रविष्टियाँ",
     oneEntry: "1 प्रविष्टि",
     colWhen: "कब",

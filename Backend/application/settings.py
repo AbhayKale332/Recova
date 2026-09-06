@@ -30,6 +30,11 @@ class Settings (BaseSettings ):
 
     encryption_key :str =""
 
+    # Shared secret for the destructive admin routes. POST /admin/seed
+    # truncates every table, so the gate fails closed: empty means the route is
+    # disabled outright, not open. Send it as the X-Admin-Token header.
+    admin_token :str =""
+
 
     razorpay_key_id :str =""
     razorpay_key_secret :str =""

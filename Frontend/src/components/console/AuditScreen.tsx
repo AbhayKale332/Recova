@@ -8,7 +8,6 @@ import { api } from "@/lib/api";
 import { formatAbsolute, humanizeEnum } from "@/lib/format";
 import { fillTemplate, useI18n } from "@/lib/i18n";
 import type { AuditEntry, AuditList } from "@/lib/types";
-import { useConsole } from "@/components/console/ConsoleContext";
 
 const PAGE = 100;
 
@@ -19,7 +18,6 @@ const PAGE = 100;
  */
 export function AuditScreen() {
   const { t, locale } = useI18n();
-  const { seed, seeding } = useConsole();
 
   const [txn, setTxn] = useState("");
   const [pending, setPending] = useState("");
@@ -91,19 +89,7 @@ export function AuditScreen() {
       ) : error && !data ? (
         <ErrorState error={error} onRetry={refresh} />
       ) : !data || data.items.length === 0 ? (
-        <EmptyState
-          title={t.audit.empty}
-          action={
-            <button
-              type="button"
-              onClick={seed}
-              disabled={seeding}
-              className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] font-medium disabled:opacity-60"
-            >
-              {seeding ? t.actions.seeding : t.actions.seed}
-            </button>
-          }
-        />
+        <EmptyState title={t.audit.empty} body={t.audit.emptyBody} />
       ) : (
         <>
           <p className="text-[12px] text-[var(--muted)]" aria-live="polite">

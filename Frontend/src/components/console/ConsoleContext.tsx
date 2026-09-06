@@ -14,7 +14,7 @@ import {
 import { describeError, useApi, useMutation } from "@/hooks/useApi";
 import { useSimulationRun, type SimulationRun } from "@/hooks/useSimulationRun";
 import { api } from "@/lib/api";
-import { fillTemplate, useI18n } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n";
 import { decodeScenario, defaultScenario, type SavedScenario, type Scenario, type ScenarioPreset } from "@/lib/simulation";
 import { useToast } from "@/components/Toast";
 import type { PolicyResponse } from "@/lib/types";
@@ -27,8 +27,10 @@ import type { PolicyResponse } from "@/lib/types";
  * Now the user describes a scenario, the engine works it, and every number on
  * screen is the output of that run.
  *
- * The seeded batch is still reachable: /console/guardrails and /console/audit
- * read the real book, so `seed` stays here for them.
+ * There is deliberately no seed action here. POST /admin/seed truncates every
+ * table and is gated behind ADMIN_TOKEN, so it is an operator's curl, not a
+ * button in a browser. /console/audit fills from a run's own audit rows, and
+ * /console/guardrails reads the policy row that startup creates.
  */
 
 interface ConsoleValue {
@@ -46,8 +48,6 @@ interface ConsoleValue {
   policy: PolicyResponse | null;
   run: SimulationRun;
   start: () => void;
-  seed: () => void;
-  seeding: boolean;
 }
 
 const ConsoleContext = createContext<ConsoleValue | null>(null);
@@ -125,16 +125,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     }
   }, [deleteMutation, presetState, t.sim, toast]);
 
-  const seedMutation = useMutation(api.seed);
-  const seed = useCallback(async () => {
-    const result = await seedMutation.run();
-    if (result.ok) {
-      toast.success(fillTemplate(t.errors.seedOk, { count: result.data.seeded }));
-    } else {
-      toast.failure(t.errors.seedFailed, describeError(result.error));
-    }
-  }, [seedMutation, toast, t]);
-
   // A failed run is the one thing here the user cannot see any other way.
   useEffect(() => {
     if (run.phase === "error" && run.error) toast.failure(t.batch.failureTitle, run.error);
@@ -155,8 +145,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       policy: policyState.data,
       run,
       start,
-      seed,
-      seeding: seedMutation.pending,
     }),
     [
       scenario,
@@ -169,8 +157,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       policyState.data,
       run,
       start,
-      seed,
-      seedMutation.pending,
     ],
   );
 

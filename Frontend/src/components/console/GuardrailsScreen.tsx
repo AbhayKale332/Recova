@@ -9,7 +9,6 @@ import { api } from "@/lib/api";
 import { formatAbsolute, humanizeEnum, paiseToRupees, rupeesToPaise } from "@/lib/format";
 import { fillTemplate, useI18n } from "@/lib/i18n";
 import { ACTIONS, CHANNELS, type PolicyResponse, type PolicyVerdict, type ScreenVerdict } from "@/lib/types";
-import { useConsole } from "@/components/console/ConsoleContext";
 
 /**
  * /console/guardrails — the limits the engine works inside.
@@ -21,7 +20,6 @@ import { useConsole } from "@/components/console/ConsoleContext";
  */
 export function GuardrailsScreen() {
   const { t } = useI18n();
-  const { seed, seeding } = useConsole();
 
   const loadPolicy = useCallback((signal: AbortSignal) => api.policy(signal), []);
   const policyState = useApi<PolicyResponse>(loadPolicy);
@@ -31,7 +29,7 @@ export function GuardrailsScreen() {
     return <ErrorState error={policyState.error} onRetry={policyState.refresh} />;
   }
   if (!policyState.data) {
-    return <EmptyState title={t.states.emptyTitle} action={<SeedButton onSeed={seed} seeding={seeding} />} />;
+    return <EmptyState title={t.states.emptyTitle} />;
   }
 
   const data = policyState.data;
@@ -48,20 +46,6 @@ export function GuardrailsScreen() {
       <Sandbox data={data} />
       <EscalationQueue />
     </div>
-  );
-}
-
-function SeedButton({ onSeed, seeding }: { onSeed: () => void; seeding: boolean }) {
-  const { t } = useI18n();
-  return (
-    <button
-      type="button"
-      onClick={onSeed}
-      disabled={seeding}
-      className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[13px] font-medium disabled:opacity-60"
-    >
-      {seeding ? t.actions.seeding : t.actions.seed}
-    </button>
   );
 }
 

@@ -7,10 +7,10 @@ import { ApiError, NetworkError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 /**
- * Loading / Empty / Error / Unseeded — every data surface in the app has all four.
+ * Loading / Empty / Error — every data surface in the app has all three.
  *
- * The error state names the status and the path; the unseeded state offers a
- * real call to action rather than a blank page.
+ * The error state names the status and the path; the empty state says what to
+ * do about it rather than leaving a blank page.
  */
 
 function Shell({
@@ -107,34 +107,6 @@ export function ErrorState({
           {t.actions.retry}
         </button>
       ) : null}
-    </Shell>
-  );
-}
-
-/**
- * The database starts empty. Every screen handles this with a real call to
- * action — POST /admin/seed — not a blank page.
- */
-export function UnseededState({
-  onSeed,
-  seeding,
-}: {
-  onSeed: () => void;
-  seeding: boolean;
-}) {
-  const { t } = useI18n();
-  return (
-    <Shell>
-      <p className="text-[14px] font-semibold text-[var(--ink)]">{t.states.unseededTitle}</p>
-      <p className="max-w-prose text-[13px] text-[var(--muted)]">{t.states.unseededBody}</p>
-      <button
-        type="button"
-        onClick={onSeed}
-        disabled={seeding}
-        className="mt-1 rounded bg-[var(--accent)] px-3 py-1.5 text-[13px] font-semibold text-white transition-colors duration-150 hover:bg-[var(--accent-ink)] disabled:opacity-60"
-      >
-        {seeding ? t.actions.seeding : t.actions.seed}
-      </button>
     </Shell>
   );
 }

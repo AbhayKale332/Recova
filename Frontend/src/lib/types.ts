@@ -220,7 +220,13 @@ export interface ScreenVerdict {
   reason: string;
 }
 
-/** POST /admin/seed — the live server also returns a per-state tally. */
+/**
+ * POST /admin/seed — the live server also returns a per-state tally.
+ *
+ * No client calls this: the endpoint truncates every table and is gated behind
+ * ADMIN_TOKEN, so it is an operator's curl. The shape stays here as the
+ * documented response contract.
+ */
 export interface SeedResult { seeded: number; by_state: Record<string, number>; }
 
 export interface AssistantReply { reply: string; action: unknown }

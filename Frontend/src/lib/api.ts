@@ -23,7 +23,6 @@ import type {
   PolicyVerdict,
   RecoverBatchResult,
   ScreenVerdict,
-  SeedResult,
   SubscriptionItem,
   TransactionDetail,
   TransactionList,
@@ -121,7 +120,12 @@ async function readDetail(response: Response): Promise<string | null> {
 async function request<T>(
   method: string,
   path: string,
-  opts: { query?: Query; body?: unknown; signal?: AbortSignal } = {},
+  opts: {
+    query?: Query;
+    body?: unknown;
+    signal?: AbortSignal;
+    headers?: Record<string, string>;
+  } = {},
 ): Promise<T> {
   const url = `${ROOT}${withQuery(path, opts.query)}`;
   let response: Response;
@@ -130,7 +134,10 @@ async function request<T>(
       method,
       cache: "no-store",
       signal: opts.signal,
-      headers: opts.body === undefined ? undefined : { "content-type": "application/json" },
+      headers: {
+        ...(opts.body === undefined ? {} : { "content-type": "application/json" }),
+        ...opts.headers,
+      },
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
     });
   } catch (error) {
@@ -297,8 +304,6 @@ export const api = {
     locale: Locale;
     context?: { route?: string; focused_transaction_id?: string; class_filter?: number };
   }) => post<AssistantReply>("/assistant/chat", body),
-
-  seed: () => post<SeedResult>("/admin/seed"),
 
   /* ── Simulation ──────────────────────────────────────────────────────── */
 
