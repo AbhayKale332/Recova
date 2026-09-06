@@ -40,6 +40,20 @@ class _FakeDiagnosis :
         return Diagnosis (root_cause ="TEST",recommended_playbook =_DEFAULT_PLAYBOOK [failure_class ])
 
 
+# The per-day API cap is global state keyed on the real SQLite file; disable it
+# for the whole suite so request-heavy test modules don't exhaust the quota.
+@pytest .fixture (autouse =True )
+def rate_limit_disabled ():
+    from application .settings import settings
+
+    original =settings .rate_limit_enabled
+    settings .rate_limit_enabled =False
+    try :
+        yield
+    finally :
+        settings .rate_limit_enabled =original
+
+
 # Tests use an isolated in-memory database so they never mutate the runtime SQLite file.
 @pytest .fixture ()
 def db_session ():

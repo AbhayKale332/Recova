@@ -270,6 +270,7 @@ export const en = {
     quietArmed: "Quiet hours armed — outbound contact will be deferred to 09:00 IST.",
     retriesUsed: "Retries already used",
     retriesHint: "RBI permits 3 auto-debit retries per cycle.",
+    messagesSent: "Messages already sent",
     voiceUsed: "Voice calls already made",
     voiceHint: "At most 2 in a rolling 72 hours.",
     lateSettlement: "Settled late",

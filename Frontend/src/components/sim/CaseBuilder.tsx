@@ -20,6 +20,7 @@ export const EMPTY_CASE = (number: number): CustomCase => ({
   reply: null,
   retries_used: 0,
   voice_attempts: 0,
+  whatsapp_nudges_used: 0,
   days_overdue: null,
   outcome_event: null,
   playbook: null,
@@ -77,7 +78,7 @@ export function CaseBuilder({
       {cases.length ? (
         <>
           <div className="hidden overflow-x-auto rounded-md border border-[var(--border)] sm:block">
-            <table className="w-full min-w-[920px] border-collapse text-[12px]">
+            <table className="w-full min-w-[1040px] border-collapse text-[12px]">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg)] text-left text-[11px] text-[var(--muted)]">
                   <th className="px-2 py-2 font-medium">{t.sim.customerName}</th>
@@ -85,6 +86,7 @@ export function CaseBuilder({
                   <th className="px-2 py-2 font-medium">{t.sim.failureClass}</th>
                   <th className="px-2 py-2 font-medium">{t.sim.replyText}</th>
                   <th className="px-2 py-2 font-medium">{t.sim.retriesUsed}</th>
+                  <th className="px-2 py-2 font-medium">{t.sim.messagesSent}</th>
                   <th className="px-2 py-2 font-medium">{t.sim.voiceUsed}</th>
                   <th className="px-2 py-2 font-medium">{t.sim.daysOverdue}</th>
                   <th className="px-2 py-2 font-medium">{t.sim.clockTime}</th>
@@ -140,6 +142,7 @@ export function CaseBuilder({
                       />
                     </td>
                     <td className="p-2 align-top"><NumberInput value={item.retries_used} min={0} max={5} disabled={disabled} onChange={(retries_used) => update(index, { retries_used })} /></td>
+                    <td className="p-2 align-top"><NumberInput value={item.whatsapp_nudges_used ?? 0} min={0} max={5} disabled={disabled} onChange={(whatsapp_nudges_used) => update(index, { whatsapp_nudges_used })} /></td>
                     <td className="p-2 align-top"><NumberInput value={item.voice_attempts} min={0} max={5} disabled={disabled} onChange={(voice_attempts) => update(index, { voice_attempts })} /></td>
                     <td className="p-2 align-top"><NumberInput value={item.days_overdue ?? 0} min={0} max={365} suffix={t.sim.days} disabled={disabled} onChange={(days_overdue) => update(index, { days_overdue })} /></td>
                     <td className="p-2 align-top">
@@ -193,8 +196,9 @@ export function CaseBuilder({
                 <Field label={t.sim.replyText} hint={t.sim.replyHint}>
                   <textarea value={item.reply_text ?? ""} maxLength={280} disabled={disabled} placeholder={t.sim.replyPlaceholder} onChange={(event) => update(index, { reply_text: event.target.value || null })} className="min-h-20 w-full resize-y rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[13px]" />
                 </Field>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <Field label={t.sim.retriesUsed} hint=""><NumberInput value={item.retries_used} min={0} max={5} disabled={disabled} onChange={(retries_used) => update(index, { retries_used })} /></Field>
+                  <Field label={t.sim.messagesSent} hint=""><NumberInput value={item.whatsapp_nudges_used ?? 0} min={0} max={5} disabled={disabled} onChange={(whatsapp_nudges_used) => update(index, { whatsapp_nudges_used })} /></Field>
                   <Field label={t.sim.voiceUsed} hint=""><NumberInput value={item.voice_attempts} min={0} max={5} disabled={disabled} onChange={(voice_attempts) => update(index, { voice_attempts })} /></Field>
                   <Field label={t.sim.daysOverdue} hint=""><NumberInput value={item.days_overdue ?? 0} min={0} max={365} disabled={disabled} onChange={(days_overdue) => update(index, { days_overdue })} /></Field>
                 </div>

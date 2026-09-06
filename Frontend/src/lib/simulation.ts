@@ -34,6 +34,9 @@ export interface CustomCase {
   reply: ReplyKind | null;
   retries_used: number;
   voice_attempts: number;
+  /** WhatsApp nudges already sent before the run — seeded as prior dispatches
+   * so a live run can start at the nudge cap, where the agent's next move is a call. */
+  whatsapp_nudges_used: number;
   days_overdue: number | null;
   outcome_event: string | null;
   playbook: string | null;

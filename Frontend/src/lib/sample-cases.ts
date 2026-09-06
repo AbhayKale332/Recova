@@ -26,6 +26,7 @@ function make(overrides: Partial<CustomCase>): CustomCase {
     reply: null as ReplyKind | null,
     retries_used: 0,
     voice_attempts: 0,
+    whatsapp_nudges_used: 0,
     days_overdue: null,
     outcome_event: null,
     playbook: null,
@@ -100,6 +101,20 @@ export const SAMPLE_CASES: SampleCase[] = [
         retries_used: 3,
         voice_attempts: 1,
         days_overdue: 12,
+      }),
+  },
+  {
+    key: "nudge-cap",
+    title: "Three nudges in, no reply",
+    blurb: "₹1,299 renewal, 3 WhatsApp reminders already sent and 1 call used — the agent's next move is a call.",
+    build: () =>
+      make({
+        customer_name: "Kabir Shah",
+        amount_inr: 1299,
+        failure_class: 2,
+        days_overdue: 6,
+        whatsapp_nudges_used: 3,
+        voice_attempts: 1,
       }),
   },
   {

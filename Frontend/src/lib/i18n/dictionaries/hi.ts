@@ -260,6 +260,7 @@ export const hi: Dictionary = {
     quietArmed: "शांत घंटे सक्रिय — बाहरी संपर्क 09:00 IST तक स्थगित रहेगा।",
     retriesUsed: "पहले से उपयोग किए गए रीट्राई",
     retriesHint: "RBI प्रति चक्र 3 ऑटो-डेबिट रीट्राई की अनुमति देता है।",
+    messagesSent: "पहले से भेजे गए संदेश",
     voiceUsed: "पहले से की गई वॉइस कॉल",
     voiceHint: "72 घंटों में अधिकतम 2।",
     lateSettlement: "देर से निपटा",
