@@ -120,7 +120,7 @@ export function LiveScreen() {
       : null;
 
   return (
-    <div className="big-ui mx-auto flex min-h-dvh max-w-[1800px] flex-col gap-4 px-4 py-4">
+    <div className="mx-auto flex min-h-dvh max-w-[1200px] flex-col gap-4 px-3 py-3 sm:px-4 sm:py-4">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="size-2 rounded-full bg-[var(--accent)]" aria-hidden />

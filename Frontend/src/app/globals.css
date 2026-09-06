@@ -58,35 +58,11 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.55;
+  /* The console is a work surface: 13–14px body, tight rows (Vision §6). */
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-
-/*
- * Desktop-first scale. The console and live theatre are meant to fill a large
- * screen, not a phone: enlarge the whole surface uniformly (text, icons,
- * spacing, chrome) and let it use the full window width. Applied to the
- * console shell and the live theatre roots via `.big-ui`.
- */
-.big-ui {
-  zoom: 1.15;
-}
-
-/*
- * The design pins a lot of small type at fixed pixel sizes. Bump each step up
- * one notch, app-wide, so nothing reads as cramped. Large display figures
- * (≥19px) are already big and are left alone.
- */
-.text-\[9px\] { font-size: 11px; }
-.text-\[10px\] { font-size: 12px; }
-.text-\[11px\] { font-size: 13px; }
-.text-\[12px\] { font-size: 14px; }
-.text-\[13px\] { font-size: 15px; }
-.text-\[14px\] { font-size: 16px; }
-.text-\[15px\] { font-size: 17px; }
-.text-\[16px\] { font-size: 18px; }
-.text-\[17px\] { font-size: 19px; }
 
 /* Money and every other figure aligns in a column. */
 .tabular {

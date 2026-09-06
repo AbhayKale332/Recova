@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { ClassChip } from "@/components/ClassChip";
 import { CaseBuilder, EMPTY_CASE } from "@/components/sim/CaseBuilder";
@@ -48,6 +48,15 @@ export function ScenarioForm({
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
+  // Picking a sample drops a case into the builder below the fold; scroll it
+  // into view so the "Run live" button on that new row is immediately reachable.
+  const caseBuilderRef = useRef<HTMLDivElement>(null);
+  const revealCaseBuilder = () => {
+    requestAnimationFrame(() => {
+      caseBuilderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   const setCases = (patch: Partial<Scenario["cases"]>) =>
     onChange({ ...scenario, cases: { ...scenario.cases, ...patch } });
   const setEdges = (patch: Partial<Scenario["edge_cases"]>) =>
@@ -71,13 +80,21 @@ export function ScenarioForm({
   return (
     <div className="flex flex-col gap-4">
       <SampleGallery
-        onPick={(built) => setCustomCases([...scenario.custom_cases, built])}
-        onCustom={() => setCustomCases([...scenario.custom_cases, EMPTY_CASE(scenario.custom_cases.length + 1)])}
+        onPick={(built) => {
+          setCustomCases([...scenario.custom_cases, built]);
+          revealCaseBuilder();
+        }}
+        onCustom={() => {
+          setCustomCases([...scenario.custom_cases, EMPTY_CASE(scenario.custom_cases.length + 1)]);
+          revealCaseBuilder();
+        }}
         disabled={disabled}
       />
 
       <Group title={t.sim.groupCustom} defaultOpen>
-        <CaseBuilder cases={scenario.custom_cases} onChange={setCustomCases} disabled={disabled} />
+        <div ref={caseBuilderRef} className="scroll-mt-24">
+          <CaseBuilder cases={scenario.custom_cases} onChange={setCustomCases} disabled={disabled} />
+        </div>
 
         <Field label={t.sim.amountBounds} hint={t.sim.amountBoundsHint}>
           <div className="flex flex-wrap items-center gap-3">
