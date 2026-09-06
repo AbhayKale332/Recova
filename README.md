@@ -480,6 +480,26 @@ flowchart LR
 
 Config: `.Agents/mcp.json` runs `razorpay-mcp-server:latest` in Docker. Webhooks land at `POST /api/v1/webhooks/razorpay` with `processed_events` idempotency.
 
+### Proof it works — end to end, on real Razorpay infrastructure
+
+A single recovery run, captured live in **Razorpay Test Mode**. The agent diagnosed a Class 1 failure, cleared every guardrail, and asked the MCP adapter to mint a payment link — which Razorpay created, hosted, and later reported as `captured`. Nothing here is mocked: the link, the short URL, and the `pay_…` id all live on Razorpay's servers.
+
+| # | What you're looking at | What it proves |
+|:--:|------------------------|----------------|
+| 1 | **The agent's WhatsApp nudge** — a Razorpay-hosted `rzp.io` short link, sent after `screen_user_message()` → quiet-hours → retry-cap → voice-cap → `PolicySandbox.validate()` all passed. The trailing *"Payment received — ₹4,200. Thank you!"* is the engine reconciling the webhook and closing the case as `RECOVERED`. | The full loop: guardrails → MCP dispatch → hosted link → capture → reconcile. |
+| 2 | **The Razorpay checkout** the customer opens. Note the reference line — *"Payment recovery for `sim_live_3b0_custom_0000`"* — that string is the agent's run id, passed straight into the `create_payment_link` call. | The link was minted by our code path, not created by hand in the dashboard. |
+| 3 | **`Payment Successful`** — Razorpay returns a genuine payment id (`pay_TYcWqaZdJQwZYA`) and timestamp. This is the `payment.captured` event that the webhook handler turns into a `RECOVERED` transition + audit row. | Money actually moved through the gateway; the "recovered" figure is a real capture. |
+
+<table>
+<tr>
+<td width="34%"><img src="docs/proof/01-agent-whatsapp-recovery.png" alt="Agent sends a Razorpay payment link over WhatsApp and reconciles the payment"/></td>
+<td width="33%"><img src="docs/proof/02-razorpay-checkout.png" alt="Razorpay Test Mode checkout showing the agent run id as the payment reference"/></td>
+<td width="33%"><img src="docs/proof/03-razorpay-payment-success.png" alt="Razorpay confirms payment captured with a real pay_ id"/></td>
+</tr>
+</table>
+
+**Reproduce it:** set `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` (test keys) and `RAZORPAY_WEBHOOK_SECRET` in `Backend/.env`, start the MCP server from `.Agents/mcp.json`, open `/live`, pick a Class 1 case, and reply to the nudge. The decision card shows every gate that armed; the payment artifact carries the live `rzp.io` link; `razorpay.com/support` will confirm the `pay_…` id.
+
 ---
 
 ## 📒 The audit trail
