@@ -6,9 +6,9 @@
 
 An AI agent that **detects** revenue at risk, **diagnoses** why it failed, runs a **bounded** intervention, and **stops** the moment policy says stop — then shows you the receipt.
 
-*Built for the Razorpay Buildathon — Track 03: AI Revenue Recovery.*
+*A personal project: what happens when you give an AI agent real money-moving power, but wire its hands so it physically cannot misbehave.*
 
-**[▶ Open the live console](https://recova-v1.vercel.app/console)** · **[🎬 Watch the 3-min demo](https://youtu.be/E8sgaEjsF3k)** · **[💳 Real Razorpay capture](#-proof-it-works-on-real-razorpay-infrastructure)** · **[✅ Track 03 map](#-track-03-requirement-by-requirement)**
+**[▶ Open the live console](https://recova-v1.vercel.app/console)** · **[🎬 Watch the 3-min demo](https://youtu.be/E8sgaEjsF3k)** · **[💳 Real Razorpay capture](#-proof-it-works-on-real-razorpay-infrastructure)** · **[🧠 Agent architecture](#-agent-architecture-how-recova-thinks)**
 
 <a href="https://youtu.be/E8sgaEjsF3k"><img src="https://img.youtube.com/vi/E8sgaEjsF3k/maxresdefault.jpg" alt="Recova — 3-minute demo" width="720"/></a>
 
@@ -35,12 +35,57 @@ An AI agent that **detects** revenue at risk, **diagnoses** why it failed, runs 
 
 ---
 
+## 🧠 Agent architecture — how Recova thinks
+
+Every dollar (or rupee) that moves does so through one closed loop. The agent never gets a straight line to a payment rail — it has to earn its way through diagnosis, routing, and a stack of deterministic guardrails first.
+
+```mermaid
+flowchart TB
+    IN["💰 Revenue signal<br/>failed payment · abandoned checkout ·<br/>failed mandate · overdue invoice"] --> DET["🔍 Detect<br/>ingest + classify into 1 of 4 failure taxonomies"]
+    DET --> DIAG["🩺 Diagnose<br/>LLM-assisted root-cause reasoning<br/>(advisory only)"]
+    DIAG --> ROUTE["🧭 Route<br/>cost-aware model router picks<br/>provider + capability tier per case"]
+    ROUTE --> DECIDE["🎯 Decide<br/>agent proposes an intervention from<br/>a closed 8-tool action set"]
+    DECIDE --> GATE{"🔒 Guardrail stack<br/>quiet hours → retry cap →<br/>voice cap → policy sandbox"}
+    GATE -->|"cleared"| ACT["⚙️ Act<br/>dispatch via WhatsApp · voice ·<br/>payment link · QR · Razorpay MCP"]
+    GATE -->|"blocked"| STOP["🛑 Stop / 🙋 Escalate<br/>compliant halt, human handoff"]
+    ACT --> RECON["📡 Reconcile<br/>webhook confirms capture"]
+    RECON --> LEARN["📈 Learn<br/>Bayesian posteriors update per<br/>class × playbook × channel"]
+    STOP --> AUDIT["📒 Audit<br/>append-only, structured, single writer"]
+    RECON --> AUDIT
+    LEARN --> AUDIT
+    AUDIT --> OUT["📊 Money recovered, measured —<br/>not money 'at risk', reported"]
+    LEARN -.->|"feeds back into"| ROUTE
+
+    style IN fill:#fee2e2,stroke:#ef4444
+    style GATE fill:#fef3c7,stroke:#f59e0b
+    style OUT fill:#dcfce7,stroke:#22c55e
+```
+
+**The one rule that shapes everything else:** the model can *propose*, never *dispatch*. Every action passes a deterministic, model-free gate before a message goes out or a rupee moves — so the agent can be aggressive about recovering revenue and provably incapable of overstepping policy at the same time.
+
+### ⚡ What the agent can actually do
+
+- **Reads the entire failure surface in real time** — payment timeouts, checkout drop-offs, failed recurring mandates, ageing B2B invoices — and classifies every single one automatically, no human triage required.
+- **Diagnoses root cause like a senior ops analyst**, in milliseconds, across a four-class failure taxonomy, with a confidence score attached to every call.
+- **Runs its own cost-aware model router** — picks the cheapest model that can still do the job, and silently upgrades itself to a stronger model the instant real money is on the line.
+- **Negotiates recovery across every channel that matters** — WhatsApp, voice (in fluent Hinglish), payment links, QR codes, fee waivers, partial-payment plans — and knows which one to reach for per case.
+- **Talks to customers in natural Hindi and English**, understands opt-outs and disputes typed in Hinglish slang, and never needs a script to sound human.
+- **Executes real payment operations on live Razorpay infrastructure** through a private, allowlisted MCP tool surface — mints payment links, generates QR codes, reconciles webhook captures — completely autonomously.
+- **Knows eight distinct, named reasons to stop itself** — regulatory retry caps, quiet-hour laws, voice-attempt limits, disputes, opt-outs — and enforces every one without being asked twice.
+- **Never needs supervision to stay compliant** — the guardrails are deterministic code, not a prompt, so the agent literally cannot be talked into breaking a rule, no matter how it's phrased at.
+- **Runs hundreds of cases concurrently** — ~65 cases/sec sustained — while writing a tamper-evident, append-only audit trail for every decision it makes.
+- **Projects its own future performance** — a live Bayesian model forecasts expected recovery with a real confidence band, and updates itself from every outcome it observes.
+- **Shows its work, unprompted** — every decision ships with the reasoning trace, the guardrail that applied, and the exact code path that produced it, so nothing it does is a black box.
+- **Simulates entire books of revenue risk on demand** — spin up hundreds of synthetic cases and watch the agent recover, defer, and escalate them live, end to end, in about three seconds.
+
+---
+
 ## 📑 Table of contents
 
 | | | |
 |---|---|---|
 | [See it in 60 seconds](#-see-it-in-60-seconds) | [The core idea](#-the-core-idea) | [Proof on real Razorpay](#-proof-it-works-on-real-razorpay-infrastructure) |
-| [The problem](#-the-problem-track-03) | [Track 03, requirement by requirement](#-track-03-requirement-by-requirement) | [The story](#-the-story-meena--shashank) |
+| [The problem](#-the-problem) | [Requirement map](#-requirement-map) | [The story](#-the-story-meena--shashank) |
 | [What makes Recova different](#-what-makes-recova-different) | [The four failure classes](#-the-four-failure-classes) | [Architecture](#-architecture) |
 | [The recovery decision graph](#-the-recovery-decision-graph) | [Guardrails & stopping rules](#-guardrails--stopping-rules-the-spine) | [The model-free boundary](#-the-model-free-boundary) |
 | [The cost-aware LLM router](#-the-cost-aware-llm-router) | [The simulation engine](#-the-simulation-engine-the-console-produces-money-it-doesnt-report-it) | [The projection model](#-the-projection-model-measured--projected--deferred) |
@@ -73,7 +118,7 @@ Nothing to install. The console is deployed and the backend is live.
 | ⚙️ **API + interactive docs** | <https://recova-production-4531.up.railway.app/docs> |
 | 🎬 **3-minute walkthrough** | <https://youtu.be/E8sgaEjsF3k> |
 
-**The judge path — four steps, about a minute:**
+**The quick path — four steps, about a minute:**
 
 1. Open the console → preset **"Month-end mandate crunch"** → **Run**. 200 cases stream through the real LangGraph engine concurrently, in ~3.1s. The clock is pinned to 21:40 IST, so watch TRAI quiet hours defer every outbound channel while the salary-window retry still goes ahead.
 2. Read the generated line: *Recova recovered **₹X** of **₹Y** across **N** cases — **e** escalated to a human, **s** stopped by policy.* Every number in it was produced by that run.
@@ -115,7 +160,7 @@ A single recovery run, captured live in **Razorpay Test Mode**. The agent diagno
 
 ---
 
-## 💸 The problem (Track 03)
+## 💸 The problem
 
 Revenue rarely disappears in one clean break. It drains through a hundred cracks nobody can watch at once:
 
@@ -126,7 +171,7 @@ Subscription renews    →  auto-debit fails     →  recurring revenue at risk
 Invoice hits due date  →  goes overdue         →  receivable unpaid
 ```
 
-The brief asks for an agent that completes the **entire** progression — not just the first box:
+The goal was an agent that completes the **entire** progression — not just the first box:
 
 ```mermaid
 flowchart LR
@@ -148,11 +193,11 @@ flowchart LR
 
 ---
 
-## ✅ Track 03, requirement by requirement
+## ✅ Requirement map
 
-The brief asks for the whole progression, not just detection. Here is each clause, where it is implemented, and where you can watch it happen.
+The idea was to cover the whole progression, not just detection. Here is each piece, where it is implemented, and where you can watch it happen.
 
-| The brief asks for | Implemented in | Watch it |
+| Capability | Implemented in | Watch it |
 |---|---|---|
 | **Detect** revenue at risk | `workflow_nodes.ingest` · four-class taxonomy in `constants.FailureClass` | `/console` case list, filterable by class |
 | **Diagnose** the root cause | `operations/diagnosis_service.py` (routed, advisory; class default on failure) | case panel → diagnosis + confidence |
@@ -201,7 +246,7 @@ Three decisions carry the product. The other nine are folded below, each with it
 |---|------|----------------|
 | 1️⃣ | **The console *produces* the money, it doesn't *report* it.** You type a scenario, press Run, and N cases stream through the real LangGraph engine concurrently. | A recovered figure already sitting in a database is indistinguishable from a hardcoded one. Inputs → run → measured outcome is falsifiable in a live demo; a dashboard read is not. |
 | 2️⃣ | **The LLM is advisory *everywhere*.** Two boundaries — `policy_guard.py` and `compliance_rules.py` — are deterministic and model-free. Provider choice changes phrasing, never whether money moves. | The product's core claim is that the reason on screen is the code that would run in production. A rogue or hallucinating model cannot dispatch a payment, exceed a cap, or override an opt-out. |
-| 6️⃣ | **Stopping rules are the spine, not a footnote.** Eight named, enumerated rules. Each one emits a structured audit row and is counted in the metrics, so a judge can see *which* rule halted *how many* workflows. | "Any system can send more messages. Ours knows when to stop." Restraint is the feature. |
+| 6️⃣ | **Stopping rules are the spine, not a footnote.** Eight named, enumerated rules. Each one emits a structured audit row and is counted in the metrics, so anyone can see *which* rule halted *how many* workflows. | "Any system can send more messages. Ours knows when to stop." Restraint is the feature. |
 
 <details>
 <summary><b>Nine more decisions, each with its rationale</b></summary>
