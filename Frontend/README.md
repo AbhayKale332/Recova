@@ -34,3 +34,25 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Docker
+
+A production image is published to Docker Hub: **[abhayk000/recova-frontend](https://hub.docker.com/r/abhayk000/recova-frontend)**.
+
+Build it yourself from this directory:
+
+```bash
+docker build -t abhayk000/recova-frontend:latest \
+  --build-arg NEXT_PUBLIC_API_BASE=https://your-backend-url \
+  .
+```
+
+`NEXT_PUBLIC_API_BASE` is baked in at **build time** (it's a Next.js public env var), so point it at the backend's public URL before building — not at runtime.
+
+Run it:
+
+```bash
+docker run -p 3000:3000 abhayk000/recova-frontend:latest
+```
+
+The app listens on port 3000 (override with the `PORT` env var).

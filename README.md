@@ -8,6 +8,8 @@ An AI agent that detects revenue at risk, diagnoses why it failed, runs a bounde
 
 **[Live console](https://recova-v1.vercel.app/console)** · **[API docs](https://recova-production-4531.up.railway.app/docs)** · **[Real Razorpay capture](#-proof-on-live-razorpay-infrastructure)**
 
+**Docker images:** [recova-backend](https://hub.docker.com/r/abhayk000/recova-backend) · [recova-frontend](https://hub.docker.com/r/abhayk000/recova-frontend)
+
 <br/>
 
 ![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
