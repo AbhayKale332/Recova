@@ -6,7 +6,7 @@
 
 An AI agent that detects revenue at risk, diagnoses why it failed, runs a bounded intervention, and stops the moment policy says stop.
 
-**[▶ Live console](https://recova-v1.vercel.app/console)** · **[⚙️ API docs](https://recova-production-4531.up.railway.app/docs)** · **[💳 Real Razorpay capture](#-proof-on-live-razorpay-infrastructure)**
+**[Live console](https://recova-v1.vercel.app/console)** · **[API docs](https://recova-production-4531.up.railway.app/docs)** · **[Real Razorpay capture](#-proof-on-live-razorpay-infrastructure)**
 
 <br/>
 
@@ -23,7 +23,7 @@ An AI agent that detects revenue at risk, diagnoses why it failed, runs a bounde
 
 ---
 
-## 🧠 Architecture
+## Architecture
 
 A failure signal enters from Razorpay, is deterministically classified, and is then driven through a LangGraph `StateGraph`. The model advises inside the graph; it never dispatches. Every outbound action clears four deterministic gates first.
 
@@ -82,7 +82,7 @@ flowchart TB
 
 ---
 
-## ⚡ Capabilities
+## Capabilities
 
 | Capability | Implementation |
 |---|---|
@@ -104,7 +104,7 @@ flowchart TB
 
 ---
 
-## 🎯 The core idea
+## The core idea
 
 Every run ends in one generated line:
 
@@ -116,12 +116,12 @@ The recovered figure is a *function of the guardrails*. Change **retries already
 
 ---
 
-## ⏱ Try it in 60 seconds
+## Try it in 60 seconds
 
 | | |
 |---|---|
-| 🖥 Console | <https://recova-v1.vercel.app/console> |
-| ⚙️ API + docs | <https://recova-production-4531.up.railway.app/docs> |
+| Console | <https://recova-v1.vercel.app/console> |
+| API + docs | <https://recova-production-4531.up.railway.app/docs> |
 
 Each preset exposes a different guardrail:
 
@@ -134,7 +134,7 @@ Each preset exposes a different guardrail:
 
 ---
 
-## 💳 Proof on live Razorpay infrastructure
+## Proof on live Razorpay infrastructure
 
 A single recovery run captured in Razorpay Test Mode. The agent diagnosed a Class 1 failure, cleared every gate, and asked the MCP adapter to mint a payment link, which Razorpay created, hosted, and later reported as `captured`.
 
@@ -154,16 +154,16 @@ A single recovery run captured in Razorpay Test Mode. The agent diagnosed a Clas
 
 ---
 
-## 🗂 The four failure classes
+## The four failure classes
 
 The engine routes on a locked 1-4 taxonomy (`constants.FailureClass`). Each class profile is shared by the seeder and the live runner, so a seeded case and a live case never tell two different stories.
 
 | Class | Name | Root cause | Playbook | Action → Channel | Prior* |
 |:---:|---|---|---|---|:---:|
-| **1** | Issuer / Network Timeout | `ISSUER_LATENCY_SPIKE` | `REROUTE_RAIL` | `GENERATE_PAYMENT_LINK` → 🔗 Link | Beta(7, 3) |
-| **2** | Checkout Authentication Drop | `OTP_SESSION_EXPIRED` | `UPI_AUTOPAY_NUDGE` | `SEND_WHATSAPP` → 💬 WhatsApp | Beta(5.5, 4.5) |
+| **1** | Issuer / Network Timeout | `ISSUER_LATENCY_SPIKE` | `REROUTE_RAIL` | `GENERATE_PAYMENT_LINK` → Link | Beta(7, 3) |
+| **2** | Checkout Authentication Drop | `OTP_SESSION_EXPIRED` | `UPI_AUTOPAY_NUDGE` | `SEND_WHATSAPP` → WhatsApp | Beta(5.5, 4.5) |
 | **3** | Recurring Mandate Failure | `SALARY_CYCLE_MISMATCH` | `SALARY_CYCLE_SEQUENCER` | `RETRY_CHARGE` → no contact | Beta(6.5, 3.5) |
-| **4** | B2B Invoice Aging | `BUYER_APPROVAL_DELAY` | `P2P_TRACKER` | `SEND_WHATSAPP` → 💬 WhatsApp | Beta(4.5, 5.5) |
+| **4** | B2B Invoice Aging | `BUYER_APPROVAL_DELAY` | `P2P_TRACKER` | `SEND_WHATSAPP` → WhatsApp | Beta(4.5, 5.5) |
 
 <sub>*Starting belief about pay-through rate, read as pseudo-counts. Displaced by observed outcomes as the engine runs.</sub>
 
@@ -171,7 +171,7 @@ Two distinctions the copy never blurs: `CANCELLED` (a compliant stop) versus `FA
 
 ---
 
-## 🛑 Guardrails and stopping rules
+## Guardrails and stopping rules
 
 Eight named rules in `constants.StoppingRule`, enforced in two places.
 
@@ -192,7 +192,7 @@ Escalation is a success of the guardrails, not a failure.
 
 ---
 
-## 🔒 The model-free boundary
+## The model-free boundary
 
 Two files are load-bearing for the product claim and stay deterministic.
 
@@ -204,7 +204,7 @@ Two files are load-bearing for the product claim and stay deterministic.
 
 ---
 
-## 🤖 The cost-aware LLM router
+## The cost-aware LLM router
 
 `operations/model_router.py` owns tier selection and provider failover. The recovery engine still owns every consequential decision.
 
@@ -220,7 +220,7 @@ Both SDKs are lazy imports, so a missing key never takes down the API. Function 
 
 ---
 
-## 🧪 The simulation engine
+## The simulation engine
 
 `application/simulation/` takes a scenario, expands it deterministically via `plan()`, projects a band via `probability.project()`, then streams N cases through the real LangGraph concurrently over SSE (`start`, `case`, `progress`, `complete`).
 
@@ -234,7 +234,7 @@ Measured: 200 cases in ~3.1s, ~65 cases/sec, p95 ~280ms, 8 workers.
 
 ---
 
-## 📈 The projection model
+## The projection model
 
 `application/simulation/probability.py` is closed form, pure stdlib, and runs per case inside the worker pool. A Beta prior per (class × playbook × channel) sets the base rate, then a logistic adjustment in log-odds applies: amount −0.18 per ln-step above ₹5,000, quiet hours −0.55, retries used −0.45 each, days overdue −0.006 per day, channel retried −0.50. Leave-one-out contributions rank the drivers in percentage points, and the delta method carries the prior's uncertainty into a 95% band. A case blocked by a spent bound gets `p = 0`, because a bound is a wall and not a headwind.
 
@@ -242,9 +242,9 @@ The three figures in the `complete` event are not additive and must not be summe
 
 | Figure | Meaning | Source |
 |---|---|---|
-| 💚 `recovered_inr` | Cases the engine actually drove to `RECOVERED` | Measured |
-| 🔵 `projected_inr` + `[low, high]` | Expected value across the book, 95% band | Modelled, never presented as money that moved |
-| ⏸️ `deferred_inr` | Cases in `WAITING` from quiet hours, neither won nor lost | Measured |
+| `recovered_inr` | Cases the engine actually drove to `RECOVERED` | Measured |
+| `projected_inr` + `[low, high]` | Expected value across the book, 95% band | Modelled, never presented as money that moved |
+| `deferred_inr` | Cases in `WAITING` from quiet hours, neither won nor lost | Measured |
 
 `observed_posteriors()` folds real completed, non-simulated outcomes back into the priors. GRRR lands between 4.8% and 29% depending on scenario, and the guardrails are what move it.
 
@@ -252,7 +252,7 @@ The three figures in the `complete` event are not additive and must not be summe
 
 ---
 
-## 🎭 The live session
+## The live session
 
 `/live` runs one in-process `asyncio.Queue` per session (`operations/live_session.py`). The durable transaction, message, call, escalation and audit rows remain the record.
 
@@ -260,7 +260,7 @@ Each human turn runs `screen_user_message()` ahead of the model, so opt-outs and
 
 ---
 
-## 💸 Partial payments and the calendar
+## Partial payments and the calendar
 
 Not every recovery is all or nothing. A customer who cannot clear ₹4,200 today can often clear half of it, and the engine treats that as progress rather than a win.
 
@@ -280,9 +280,9 @@ A flaky tick is logged and dropped rather than taking the sweeper down.
 
 | Category | Mandate status |
 |---|---|
-| 💚 Paid | `recovered` |
-| 🔵 Sent | `retrying` · `deferred` · `intervening` · `escalated` |
-| ⚪ Pending | everything else |
+| Paid | `recovered` |
+| Sent | `retrying` · `deferred` · `intervening` · `escalated` |
+| Pending | everything else |
 
 Clicking a date opens the case sheet. Operators add rows through `POST /subscriptions` (customer, plan, amount, next debit date, salary day) and `POST /invoices` (due date). Both write real `transaction_states` rows, so a subscription booked on the calendar is a case the engine can later pick up, not a separate ledger.
 
@@ -290,13 +290,13 @@ Related: when the `SALARY_CYCLE_SEQUENCER` playbook routes a Class 3 case to the
 
 ---
 
-## 📞 Voice recovery
+## Voice recovery
 
 `operations/voice_agent.py` builds a transient Vapi assistant config per call, personalised with customer name, amount, failure-class script opening and live guardrail state (discount cap, voice attempts remaining). `conversation_service.build_call()` supplies the scripted beats and `speech_format.speakable()` renders numbers and currency for TTS. Provider maps through the same router at full tier. Voice is capped at 2 attempts. Integrations: Vapi (web and telephony) and ElevenLabs (TTS), Hindi and English.
 
 ---
 
-## 💳 The private Razorpay MCP
+## The private Razorpay MCP
 
 `integrations/razorpay_mcp.py` is the payment dispatch transport, not a tool surface.
 
@@ -308,7 +308,7 @@ Config lives in `.Agents/mcp.json`, which runs `razorpay-mcp-server:latest` in D
 
 ---
 
-## 📒 The audit trail
+## The audit trail
 
 `entities/audit_record.py` writes to `audit_trails`, append-only: `before_update` and `before_delete` SQLAlchemy listeners raise on any attempt to mutate history. The single writer is `operations/audit_service.py::record_audit()`.
 
@@ -316,7 +316,7 @@ Reasoning is captured as a structured payload rather than prose: `{root_cause, r
 
 ---
 
-## 🖥 Frontend
+## Frontend
 
 Next.js 16.3 App Router, React 19.2, TypeScript strict, Tailwind v4 (CSS-first, no config file). Runtime UI dependencies are `next`, `react`, `react-dom`, plus `framer-motion` and `@vapi-ai/web`. No shadcn, no Radix, no icon library.
 
@@ -333,7 +333,7 @@ Next.js 16.3 App Router, React 19.2, TypeScript strict, Tailwind v4 (CSS-first, 
 
 ---
 
-## 🔌 API surface
+## API surface
 
 All routers mount under `/api/v1`.
 
@@ -354,7 +354,7 @@ All routers mount under `/api/v1`.
 | **Assistant** | `POST /assistant/chat` · `POST /assistant/tts` |
 | **Stream** | `GET /stream/demo/{failure_class}` (SSE) |
 | **Webhooks** | `POST /webhooks/razorpay` |
-| **Admin** | `POST /admin/seed` 🔒 |
+| **Admin** | `POST /admin/seed` |
 
 </details>
 
@@ -362,7 +362,7 @@ All routers mount under `/api/v1`.
 
 ---
 
-## 🧰 Tech stack
+## Tech stack
 
 | Layer | Choices |
 |---|---|
@@ -377,7 +377,7 @@ All routers mount under `/api/v1`.
 
 ---
 
-## 🚀 Getting started
+## Getting started
 
 **Prerequisites:** Python 3.12+, Node.js 20.9+, npm, [`uv`](https://docs.astral.sh/uv/), and Docker if you want the live Razorpay MCP.
 
@@ -439,7 +439,7 @@ Runs locally on built-in defaults. Add to `Backend/.env` as needed:
 
 ---
 
-## ✅ Testing
+## Testing
 
 ```bash
 cd Backend && uv run pytest     # 377 passing in ~58s, almost all offline
@@ -450,7 +450,7 @@ The suite pins a fixed mid-morning IST clock. Without it, tests would start fail
 
 ---
 
-## 📁 Repo layout
+## Repo layout
 
 ```
 Recova/
@@ -464,8 +464,8 @@ Recova/
 │   │   ├── operations/
 │   │   │   ├── failure_classifier.py  webhook signal to FailureClass
 │   │   │   ├── model_router.py        provider + tier + RouteDecision
-│   │   │   ├── policy_guard.py        🔒 model-free sandbox
-│   │   │   ├── compliance_rules.py    🔒 model-free stopping rules
+│   │   │   ├── policy_guard.py        model-free sandbox
+│   │   │   ├── compliance_rules.py    model-free stopping rules
 │   │   │   ├── diagnosis_service.py · message_drafter.py · assistant_service.py
 │   │   │   ├── agent_tools.py         closed AgentTool set + gates
 │   │   │   ├── payment_artifacts.py   links, QR, partial-plan balances
