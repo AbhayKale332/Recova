@@ -1,0 +1,45 @@
+services:
+  backend:
+    image: abhayk000/recova-backend:latest
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
+      - RAZORPAY_MCP_ENABLED=${RAZORPAY_MCP_ENABLED:-false}
+      - RAZORPAY_MCP_TRANSPORT=${RAZORPAY_MCP_TRANSPORT:-stdio}
+      - RAZORPAY_MCP_DOCKER_IMAGE=${RAZORPAY_MCP_DOCKER_IMAGE:-razorpay-mcp-server:latest}
+      - RAZORPAY_MCP_DOCKER_COMMAND=${RAZORPAY_MCP_DOCKER_COMMAND:-docker}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.6-flash}
+      - LIVE_MODE=${LIVE_MODE:-false}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM:-whatsapp:+14155238886}
+      - VAPI_API_KEY=${VAPI_API_KEY:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+      - DAILY_REQUEST_LIMIT=${DAILY_REQUEST_LIMIT:-200}
+    restart: unless-stopped
+
+  frontend:
+    image: abhayk000/recova-frontend:latest
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+    depends_on:
+      - backend
+    restart: unless-stopped

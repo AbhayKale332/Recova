@@ -8,7 +8,7 @@ An AI agent that detects revenue at risk, diagnoses why it failed, runs a bounde
 
 **[Live console](https://recova-v1.vercel.app/console)** · **[API docs](https://recova-production-4531.up.railway.app/docs)** · **[Real Razorpay capture](#-proof-on-live-razorpay-infrastructure)**
 
-**Docker images:** [recova-backend](https://hub.docker.com/r/abhayk000/recova-backend) · [recova-frontend](https://hub.docker.com/r/abhayk000/recova-frontend)
+**Docker images:** [recova-backend](https://hub.docker.com/r/abhayk000/recova-backend) · [recova-frontend](https://hub.docker.com/r/abhayk000/recova-frontend) · [compose app](https://hub.docker.com/r/abhayk000/recova)
 
 <br/>
 
@@ -414,6 +414,25 @@ npm run dev
 ```
 
 Dashboard at <http://localhost:3000>. Point `NEXT_PUBLIC_API_BASE` at another backend if needed.
+
+### Docker Compose
+
+Run both services from the published images, no local Python/Node toolchain needed.
+
+```bash
+# from the repo root, using the local docker-compose.yml
+RAZORPAY_KEY_ID=... RAZORPAY_KEY_SECRET=... RAZORPAY_WEBHOOK_SECRET=... \
+GEMINI_API_KEY=... TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... ENCRYPTION_KEY=... \
+docker compose up -d
+```
+
+Or pull the whole app straight from Docker Hub without cloning:
+
+```bash
+docker compose -f oci://abhayk000/recova:latest up -d
+```
+
+Backend at <http://localhost:8000>, frontend at <http://localhost:3000>. The required vars above match `Backend/.env.sample` — put them in a local `.env` next to wherever you run `docker compose up`, or export them, since the published compose file intentionally ships without secrets baked in.
 
 ### Seeding (optional)
 

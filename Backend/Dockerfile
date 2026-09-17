@@ -6,16 +6,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY Backend/dependencies.txt ./dependencies.txt
+COPY dependencies.txt ./dependencies.txt
 
 RUN pip install --upgrade pip \
 	&& pip install -r dependencies.txt \
 	&& pip install "mcp>=1.12.0,<2.0.0" "openai>=3.8.0" \
 	&& useradd --create-home --uid 10001 appuser
 
-COPY Backend/application ./application
-COPY Backend/main.py ./main.py
-COPY Backend/pyproject.toml ./pyproject.toml
+COPY application ./application
+COPY main.py ./main.py
+COPY pyproject.toml ./pyproject.toml
 
 RUN chown -R appuser:appuser /app
 USER appuser
