@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.sample
 *.env.local
 
 # API keys / credentials

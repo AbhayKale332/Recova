@@ -6,6 +6,8 @@
 
 An AI agent that detects revenue at risk, diagnoses why it failed, runs a bounded intervention, and stops the moment policy says stop.
 
+Every judgment it makes is a probability from **[Jev](#jev-judgments-as-probabilities)**, TypeSafe's decision model on OpenRouter. The thresholds and arithmetic stay in code, and the LLM only writes the message text.
+
 **[Live console](https://recova-v1.vercel.app/console)** · **[API docs](https://recova-production-4531.up.railway.app/docs)** · **[Real Razorpay capture](#-proof-on-live-razorpay-infrastructure)**
 
 **Docker images:** [recova-backend](https://hub.docker.com/r/abhayk000/recova-backend) · [recova-frontend](https://hub.docker.com/r/abhayk000/recova-frontend) · [compose app](https://hub.docker.com/r/abhayk000/recova)
@@ -18,7 +20,8 @@ An AI agent that detects revenue at risk, diagnoses why it failed, runs a bounde
 ![Next.js](https://img.shields.io/badge/Next.js-16.3-000000?logo=nextdotjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react&logoColor=black)
 ![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-377%20passing-3fb950)
+![Jev](https://img.shields.io/badge/Jev-1.13-7c3aed?logo=openrouter&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-443%20passing-3fb950)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 </div>
@@ -27,7 +30,7 @@ An AI agent that detects revenue at risk, diagnoses why it failed, runs a bounde
 
 ## Architecture
 
-A failure signal enters from Razorpay, is deterministically classified, and is then driven through a LangGraph `StateGraph`. The model advises inside the graph; it never dispatches. Every outbound action clears four deterministic gates first.
+A failure signal enters from Razorpay, is deterministically classified, and is then driven through a LangGraph `StateGraph`. Inside the graph, Jev supplies the judgments as probabilities (what the customer meant, which playbook, which tool) and an LLM writes the words. Neither model ever dispatches. Every outbound action clears four deterministic gates first.
 
 ```mermaid
 flowchart TB
@@ -45,8 +48,8 @@ flowchart TB
 
     subgraph GRAPH["2 · LangGraph StateGraph over RecoveryState"]
         direction TB
-        ING["<b>ingest</b><br/>screen_user_message() runs<br/>before any model call"]
-        DIA["<b>diagnose</b><br/>DiagnosisEngine via model_router<br/>advisory, class default on failure"]
+        ING["<b>ingest</b><br/>Jev read_reply(): stop · dispute · p2p · offer<br/>keyword screen if Jev is down"]
+        DIA["<b>diagnose</b><br/>Jev choice: playbook + root cause<br/>LLM, then class default, on failure"]
         WAIT["<b>wait</b><br/>next_salary_window()"]
         EXE["<b>execute</b><br/>quiet hours → retry cap → voice cap<br/>→ PolicySandbox.validate()"]
         REC["<b>reconcile</b><br/>RECOVERED only on<br/>payment.captured / authorized"]
@@ -78,7 +81,11 @@ flowchart TB
 
     style SIG fill:#fef3c7,stroke:#f59e0b
     style EXE fill:#fef3c7,stroke:#f59e0b
+    style ING fill:#ede9fe,stroke:#7c3aed
+    style DIA fill:#ede9fe,stroke:#7c3aed
 ```
+
+Amber nodes are deterministic gates; violet nodes are Jev judgments.
 
 `OrchestratorDeps {db, diagnosis, sandbox, dispatch, clock}` is injected into the graph, so the whole engine runs offline in tests with a fixed clock.
 
@@ -134,6 +141,8 @@ Each preset exposes a different guardrail:
 | Receivables chase | `DISPUTE_FREEZE` escalates aged B2B disputes to a human |
 | Mixed book, tight policy | `PolicySandbox` with discount cap at zero and voice off; forbidden actions escalate |
 | Retry budget exhausted | `RBI_MAX_RETRIES` stops the engine before a fourth debit |
+
+To see Jev at work, open `/console/guardrails` and type *"don't stop, I will pay parso"* into the message screen. The keyword screen alone would stop on "stop". Jev overrules it (P(opt-out) ≈ 0.03), shows its probabilities under the verdict, and resolves "parso" to two days from today.
 
 ---
 
@@ -221,6 +230,57 @@ Recova is **Jev-first**. [Jev](https://docs.typesafe.ai) (TypeSafe's System One 
 | Diagnosis | `DiagnosisEngine.diagnose` | `choice` playbook + `choice` root cause from a closed per-class taxonomy | Low confidence → class default | LLM `DIAGNOSE` → class default |
 | Operator intent | `assistant_service` | `choice` intent / scope / status / route / target (candidates pre-filtered by code) | Resolution, confirmation | LLM parse → keyword parse |
 | Draft safety (RBI Fair Practices Code) | `draft_guard.check_draft` | `noul` coercive / off-topic / leaks internal / discount / partial + `choice` upfront amount | Amount vs bill, % vs cap, upfront vs minimum | Code-side checks only |
+
+### One customer reply, end to end
+
+A real turn from the live theatre (`/live`, class 4 invoice, ₹4,000). The customer writes *"abhi 2500 de sakta hoon, baaki 15 tarikh ko"* ("I can pay 2,500 now, the rest on the 15th").
+
+```mermaid
+sequenceDiagram
+    participant C as Customer
+    participant R as read_reply (code)
+    participant J as Jev
+    participant D as decide_tool (code)
+    participant L as LLM
+    participant G as Gates + Razorpay
+
+    C->>R: "abhi 2500 de sakta hoon, baaki 15 tarikh ko"
+    R->>R: regex candidates: numbers {2500, 15}, amounts {₹2,500, ₹15}
+    R->>J: 9 questions, one request
+    J-->>R: stop / dispute: low · commits_to_pay: high<br/>p2p_when = day_of_month · p2p_number = 15 · offer = ₹2,500
+    R->>R: date = the next 15th (15 Oct), offer = 250000 paise
+    L->>L: drafts the WhatsApp reply (draft_guard checks it with Jev)
+    D->>J: choice over permitted AgentTools
+    J-->>D: OFFER_PARTIAL_PLAN 0.83 · GENERATE_PAYMENT_LINK 0.16
+    D->>G: partial ₹2,500 now, balance due 15 Oct
+    G-->>C: sandbox approves → Razorpay link for ₹2,500 + calendar reminder
+```
+
+Jev never produces the date or the amount. It selects them from candidates code found in the text, and code turns them into a date and paise. This is what the call looks like on the wire:
+
+```jsonc
+// POST https://openrouter.ai/api/alpha/decisions   (abridged)
+{
+  "model": "typesafe/jev-1.13-20260917",
+  "state": { "reply": "don't stop, I will pay parso" },
+  "questions": {
+    "wants_no_contact": { "type": "noul",
+      "instructions": "Is the customer in `reply` asking the business to stop contacting them? ...Hinglish...",
+      "criteria": { "true": "...'band karo', 'mat bhejo'...", "false": "...'don't stop'..." } },
+    "p2p_when": { "type": "choice", "instructions": "When does the customer say they will pay?",
+      "criteria": { "tomorrow": "Tomorrow (kal).", "day_after_tomorrow": "The day after tomorrow (parso, parson).", "...": "..." } }
+  }
+}
+// → answers (observed)
+{ "wants_no_contact": { "type": "noul", "noul": 0.02 },
+  "p2p_when": { "type": "choice", "choice": "day_after_tomorrow", "confidence": 0.98, "probabilities": { "...": 0 } } }
+```
+
+Two lessons from probing, both now in the code:
+- **Hinglish needs glosses.** With English-only options Jev read "parso" as *not stated* (0.94). With "(parso, parson)" in the criterion it read it as *day after tomorrow* (1.0).
+- **Ask one thing per question.** "Off-topic or leaks internal notes" scored a leaked system note 0.48. Split into two questions, the leak scored 0.99.
+
+### Cost, latency, and safety
 
 One reply is read with one request, about 0.5–2s and $0.00007. `Backend/scripts/jev_probe.py` runs the production questions over 70+ representative inputs (negations like "don't stop, I'll pay parso", Hinglish dates, injections, coercive drafts) and prints the raw probabilities; `--save` writes them to `test_suite/fixtures/`. Rerun it before changing `JEV_MODEL`, because thresholds do not carry between builds. The batch simulator and `recover-batch` stay model-free.
 
@@ -391,11 +451,12 @@ All routers mount under `/api/v1`.
 | **Orchestration** | LangGraph 1.2 `StateGraph`, injected `OrchestratorDeps` |
 | **Backend** | FastAPI 0.141 · SQLAlchemy 2.0 · Pydantic 2.13 · Uvicorn · `uv` |
 | **Storage** | SQLite in WAL mode (`recovery_engine.db`), Fernet encryption for `customer_contact` |
-| **LLM** | OpenAI (`openai>=3.8`) with Google Gemini (`google-genai 2.20`) fallback, both lazy imports, function calling disabled |
+| **Judgments** | Jev (`typesafe/jev-1.13-20260917`, pinned) via OpenRouter's Decisions API, sync `httpx`, no SDK |
+| **LLM (text)** | OpenAI (`openai>=3.8`) with Google Gemini (`google-genai 2.20`) fallback, both lazy imports, function calling disabled |
 | **Payments** | `razorpay 2.0`, private MCP server via `mcp>=1.12` over Docker/stdio |
 | **Voice** | Twilio 9.11 (WhatsApp) · Vapi · ElevenLabs, Hindi and English |
 | **Frontend** | Next.js 16.3 · React 19.2 · TypeScript strict · Tailwind v4 · Framer Motion · `@vapi-ai/web` |
-| **Tests** | `pytest` (47 files, 377 passing in ~58s, almost all offline) · `vitest` |
+| **Tests** | `pytest` (50 files, 443 passing in ~52s, fully offline) · `vitest` · `scripts/jev_probe.py` (live, 71 cases) |
 
 ---
 
