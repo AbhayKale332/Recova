@@ -14,6 +14,7 @@ import type {
   LiveReminder,
   LiveStart,
   LiveStep,
+  JevJudgment,
   RouteDecision,
 } from "@/lib/simulation";
 import type { ConversationMessage, LifecycleStatus, Metrics, PaymentArtifact } from "@/lib/types";
@@ -32,7 +33,7 @@ import type { ConversationMessage, LifecycleStatus, Metrics, PaymentArtifact } f
  * frame — each event can just set state directly.
  *
  * Event names come from backend/application/operations/live_session.py:
- *   start · step · diagnosis · route · decision · typing · message ·
+ *   start · step · diagnosis · route · judgment · decision · typing · message ·
  *   dispatch · artifact · call_offer · bounds · status · complete
  */
 
@@ -43,6 +44,7 @@ export type LiveTurnEvent =
   | { kind: "step"; at: number; data: LiveStep }
   | { kind: "diagnosis"; at: number; data: LiveDiagnosis }
   | { kind: "route"; at: number; data: RouteDecision }
+  | { kind: "judgment"; at: number; data: JevJudgment }
   | { kind: "decision"; at: number; data: LiveDecision }
   | { kind: "message"; at: number; data: ConversationMessage }
   | { kind: "dispatch"; at: number; data: LiveDispatchEvent }
@@ -67,6 +69,8 @@ export interface LiveSessionState {
    * differently from a real, taken one.
    */
   route: RouteDecision | null;
+  /** The latest Jev reading of a customer reply, with its probabilities. */
+  judgment: JevJudgment | null;
   decision: LiveDecision | null;
   typing: "agent" | "customer" | null;
   messages: ConversationMessage[];
@@ -119,6 +123,7 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
   const [start, setStart] = useState<LiveStart | null>(null);
   const [diagnosis, setDiagnosis] = useState<LiveDiagnosis | null>(null);
   const [route, setRoute] = useState<RouteDecision | null>(null);
+  const [judgment, setJudgment] = useState<JevJudgment | null>(null);
   const [decision, setDecision] = useState<LiveDecision | null>(null);
   const [typing, setTyping] = useState<"agent" | "customer" | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
@@ -145,6 +150,7 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
     setStart(null);
     setDiagnosis(null);
     setRoute(null);
+    setJudgment(null);
     setDecision(null);
     setTyping(null);
     setMessages([]);
@@ -206,6 +212,13 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
       if (!data) return;
       setRoute(data);
       push({ kind: "route", at: Date.now(), data });
+    });
+
+    source.addEventListener("judgment", (e) => {
+      const data = parse<JevJudgment>((e as MessageEvent<string>).data);
+      if (!data) return;
+      setJudgment(data);
+      push({ kind: "judgment", at: Date.now(), data });
     });
 
     source.addEventListener("decision", (e) => {
@@ -389,6 +402,7 @@ export function useLiveSession(sessionId: string | null): LiveSessionState {
     start,
     diagnosis,
     route,
+    judgment,
     decision,
     typing,
     messages,

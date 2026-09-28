@@ -163,14 +163,48 @@ export interface SimCase {
  */
 export interface RouteDecision {
   task: string;
-  tier: "nano" | "mini" | "full";
-  provider: "openai" | "gemini" | "deterministic";
+  /** "system-one" is a Jev judgment (backend operations/jev_client.py). */
+  tier: "nano" | "mini" | "full" | "system-one";
+  provider: "openai" | "gemini" | "deterministic" | "openrouter";
   model: string;
   reason: string;
   raised_by: string[];
   escalated_from: string | null;
   latency_ms: number;
   tokens: number | null;
+}
+
+/* ── Jev judgments (backend jev_client.summarise + ReplyReading.summary) ── */
+
+export type JevAnswer =
+  | { type: "noul"; p: number }
+  | {
+      type: "choice";
+      choice: string;
+      probabilities: Record<string, number>;
+      confidence: number | null;
+    }
+  | {
+      type: "score";
+      score: number;
+      probabilities: Record<string, number>;
+      confidence: number | null;
+    };
+
+/** The `judgment` SSE event, and the `judgment` field of a screen verdict. */
+export interface JevJudgment {
+  task?: string;
+  model: string;
+  latency_ms: number;
+  cost_usd: number | null;
+  answers: Record<string, JevAnswer>;
+  source?: "jev" | "keyword" | "empty";
+  disposition?: "CONTINUE" | "TERMINATE" | "ESCALATE";
+  rule?: string | null;
+  reason?: string;
+  note?: string | null;
+  p2p_date?: string | null;
+  offer_amount_minor?: number | null;
 }
 
 /* ── Live theatre (backend/application/operations/live_session.py) ──────── */
@@ -342,6 +376,8 @@ export interface SimComplete {
     model_calls_made: number;
     model_calls_saved: number;
     llm_reasons: Record<string, number>;
+    /** Those same cases priced as Jev judgments (backend triage.JEV_COST_PER_CASE_USD). */
+    jev_cost_usd_est?: number;
   };
   stopping_rules_by_name: Record<string, number>;
   by_class: Record<string, unknown>;

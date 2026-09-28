@@ -299,3 +299,67 @@ def test_fallback_escalate_sets_status (db_session ):
     assert out ["action"]["type"]=="set_status"
     assert out ["action"]["status"]=="ESCALATED"
     assert out ["action"]["requires_confirmation"]is True
+
+
+# ---------------------------------------------------------------- Jev intent
+
+from application.entities import TransactionState as _Txn  # noqa: E402
+from application.operations.assistant_service import interpret as _interpret  # noqa: E402
+from test_suite.jev_fake import fake_decide as _fake  # noqa: E402
+
+
+def _named(db_session, name="Meera Iyer", tid="jev_1"):
+    db_session.add(_Txn(transaction_id=tid, razorpay_payment_id=f"pay_{tid}", failure_class=1,
+                        merchant_id="m", customer_contact="+91", amount_minor=100000,
+                        metadata_json={"customer_name": name}))
+    db_session.commit()
+
+
+def test_jev_intent_runs_recovery_on_a_named_case(db_session):
+    _named(db_session)
+    calls = []
+    out = _interpret(db_session, "recover Meera Iyer", generate=None,
+                     jev=_fake({"intent": ("run_recovery", 0.95), "scope": "one", "target": "Meera Iyer"}, calls=calls))
+    assert out["action"]["type"] == "run_recovery"
+    assert out["action"]["transaction_id"] == "jev_1"
+    # Only matching names are offered, never the whole catalog.
+    assert set(calls[0]["questions"]["target"]["criteria"]) == {"Meera Iyer", "none"}
+
+
+def test_jev_intent_navigates_with_a_status_filter(db_session):
+    out = _interpret(db_session, "open the recovered failed subscriptions", generate=None,
+                     jev=_fake({"intent": ("navigate", 0.95), "route": "class:3", "status": "RECOVERED"}))
+    assert out["action"]["route"] == "/mission-control/class/3"
+    assert out["action"]["status"] == "RECOVERED"
+
+
+def test_jev_set_status_on_the_open_case_asks_for_confirmation(db_session):
+    _named(db_session)
+    out = _interpret(db_session, "mark this as recovered", context={"focused_transaction_id": "jev_1"}, generate=None,
+                     jev=_fake({"intent": ("set_status", 0.95), "status": "RECOVERED", "target": "this"}))
+    assert out["action"]["type"] == "set_status"
+    assert out["action"]["requires_confirmation"] is True
+
+
+def test_jev_low_confidence_asks_instead_of_acting(db_session):
+    out = _interpret(db_session, "hmm do the thing", generate=None, jev=_fake({"intent": ("run_recovery", 0.4)}))
+    assert out["action"] is None
+    assert "Say a bit more" in out["reply"]
+
+
+def test_jev_answer_uses_the_llm_only_for_the_text(db_session):
+    prompts = []
+
+    def gen(prompt):
+        prompts.append(prompt)
+        return '{"intent": "answer", "reply": "GRRR is 42%."}'
+
+    out = _interpret(db_session, "what's our recovery rate?", generate=gen, jev=_fake({"intent": ("answer", 0.95)}))
+    assert out == {"reply": "GRRR is 42%.", "action": None}
+    assert len(prompts) == 1
+
+
+def test_jev_outage_uses_the_llm_parse(db_session):
+    out = _interpret(db_session, "take me to the audit log", generate=lambda _p: '{"intent": "navigate", "route": "audit"}',
+                     jev=_fake(fail=True))
+    assert out["action"]["route"] == "/mission-control/audit"

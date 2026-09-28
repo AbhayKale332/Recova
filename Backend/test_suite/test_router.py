@@ -139,3 +139,12 @@ def test_router_explain_uses_the_editable_discount_cap(client, monkeypatch):
     ).json()
     assert near["raised_by"] == ["guardrail_proximity"]
     assert far["raised_by"] == []
+
+
+def test_explain_endpoint_reports_the_jev_first_tasks(client):
+    decide = client.post("/api/v1/router/explain", json={"task": "DECIDE"}).json()
+    draft = client.post("/api/v1/router/explain", json={"task": "DRAFT"}).json()
+    assert decide["jev"]["first"] is True
+    assert decide["jev"]["model"] == "typesafe/jev-1.13-20260917"
+    assert decide["jev"]["available"] is False  # the suite runs with Jev off
+    assert draft["jev"]["first"] is False

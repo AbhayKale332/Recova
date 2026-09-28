@@ -98,8 +98,9 @@ flowchart TB
 | **Tracks upcoming money on a calendar** | `/console/subscriptions` plots next debit dates and invoice due dates by status, backed by `GET\|POST /subscriptions` and `/invoices` |
 | **Speaks Hindi and English** | Transient Vapi assistant configs built per call; opt-out matching covers EN and Hinglish (`band karo`, `mat bhejo`, `rok do`) |
 | **Executes real payments** | Private Razorpay MCP server over Docker/stdio, allowlisted tool surface, never exposed to the model |
-| **Stops itself on 8 named rules** | `constants.StoppingRule`, each emitting a structured audit row counted in metrics |
-| **Cannot be talked past a guardrail** | `policy_guard.py` and `compliance_rules.py` are model-free Python; the LLM proposes, the gates decide |
+| **Judges with Jev, writes with an LLM** | Every bounded judgment (stop/dispute, promise-to-pay, tool choice, playbook, operator intent, draft safety) is a typed Jev question answered with probabilities; code owns the thresholds; the LLM only writes text |
+| **Stops itself on 9 named rules** | `constants.StoppingRule`, each emitting a structured audit row counted in metrics |
+| **Cannot be talked past a guardrail** | `policy_guard.py` and `compliance_rules.py` are model-free Python; Jev or the LLM proposes, the gates decide |
 | **Runs concurrently** | asyncio worker pool, one SQLite session per worker, WAL mode: 200 cases in ~3.1s, ~65 cases/sec, p95 ~280ms at 8 workers |
 | **Forecasts its own outcome** | Beta-Bernoulli posteriors per class × playbook × channel with a 95% band, updated from observed outcomes |
 | **Proves every decision** | Append-only audit trail, single writer, structured payloads, CSV export |
@@ -175,17 +176,18 @@ Two distinctions the copy never blurs: `CANCELLED` (a compliant stop) versus `FA
 
 ## Guardrails and stopping rules
 
-Eight named rules in `constants.StoppingRule`, enforced in two places.
+Nine named rules in `constants.StoppingRule`, enforced in two places.
 
 | Rule | Enforced in | Behaviour |
 |---|---|---|
-| `EXPLICIT_CANCEL` | `screen_user_message()` → `ingest` | Terminate to `CANCELLED` |
+| `EXPLICIT_CANCEL` | `read_reply()` (Jev, keyword fallback) → `ingest` | Terminate to `CANCELLED` |
 | `OPT_OUT` | same | Terminate to `CANCELLED`, beats dispute |
 | `DISPUTE_FREEZE` | same | Escalate, do not terminate |
 | `RBI_MAX_RETRIES` = 3 | `retry_cap_exceeded()` → `execute` | Hard regulatory cap |
 | `TRAI_QUIET_HOURS` 20:00 to 09:00 IST | `is_within_quiet_hours()` → `execute` | Defers to `WAITING`, resumes 09:00. A channel-less auto-debit retry is exempt since TRAI governs outbound contact |
 | `VOICE_ATTEMPT_CAP` = 2 | `voice_attempts_exhausted()` → `execute` | Stop voice, consider handoff |
-| `NO_DOUBLE_CHARGE` | seeded outcome | Late settlement lands before a retry |
+| `NO_DOUBLE_CHARGE` | seeded outcome; `read_reply()` when a customer says they already paid | Late settlement lands before a retry; an already-paid claim holds contact for a person |
+| `HUMAN_REVIEW` | `read_reply()` | An uncertain stop (Jev between the review floor and the stop gate), or hardship: escalate, never guess |
 | `CROSS_DEVICE_COMPLETION` | seeded outcome | Customer paid on another device |
 
 `compliance_rules.py` (Python) and `Frontend/src/lib/bounds.ts` (TypeScript) mirror each other: `RBI_MAX_RETRIES=3`, `VOICE_ATTEMPT_CAP=2`, `QUIET_HOURS_START=20`, `QUIET_HOURS_END=9`. Change one, change the other.
@@ -200,15 +202,33 @@ Two files are load-bearing for the product claim and stay deterministic.
 
 **`operations/policy_guard.py` → `PolicySandbox.validate()`** is the single gate every outbound action passes. In order: action in `allowed_actions`, channel in `allowed_channels`, partial-payment rules, `discount_pct` ≤ `max_discount_pct`, and for money-moving actions `amount_minor` ≤ `max_intervention_amount_minor`. `Decision.reason` strings are user-facing copy, surfaced verbatim and never rewritten by a model.
 
-**`operations/compliance_rules.py`** does deterministic phrase matching (EN and Hinglish) for cancel, opt-out and dispute, plus the numeric caps.
+**`operations/compliance_rules.py`** does deterministic phrase matching (EN and Hinglish) for cancel, opt-out and dispute, plus the numeric caps. It is the fallback screen whenever Jev is unavailable, and it still wins whenever Jev flags a reply as an injection attempt.
 
 `merchant_policy` is a single row (`id=1`) written only by a human operator. The conversational layer has no path to it. A simulation builds a scenario-scoped sandbox in memory instead of touching that row.
 
 ---
 
+## Jev: judgments as probabilities
+
+Recova is **Jev-first**. [Jev](https://docs.typesafe.ai) (TypeSafe's System One model, served by OpenRouter's Decisions API) reads state and answers typed questions (`noul` = P(yes), `choice` = one of a closed set, `score` = a level) with probabilities, never text. **Jev judges, code computes, the LLM writes.** The model is pinned to `typesafe/jev-1.13-20260917`; every threshold is a named constant whose comment cites the probe number it came from.
+
+| Judgment | Where | Primitive(s) | Code owns | Fallback when Jev is down |
+|---|---|---|---|---|
+| Customer reply: cancel, opt-out, dispute, injection, already paid, hardship, commits to pay | `reply_understanding.read_reply` | 7 × `noul` | Stop precedence, review band → `HUMAN_REVIEW`, keyword overrule only when Jev is sure *and* no injection | `screen_user_message()` |
+| Promise-to-pay date | same request | `choice` (today … day-of-month) + `choice` over numbers regex-found in the text | Date arithmetic | `extract_p2p_date()` |
+| Partial-payment offer | same request | `choice` over rupee amounts regex-found in the text | Paise, policy minimum | none (no offer) |
+| Next tool | `agent_tools.decide_tool` | `choice` over the `AgentTool`s the policy permits | Amount, deadline, discount, every gate | LLM `DECIDE` → class default |
+| Diagnosis | `DiagnosisEngine.diagnose` | `choice` playbook + `choice` root cause from a closed per-class taxonomy | Low confidence → class default | LLM `DIAGNOSE` → class default |
+| Operator intent | `assistant_service` | `choice` intent / scope / status / route / target (candidates pre-filtered by code) | Resolution, confirmation | LLM parse → keyword parse |
+| Draft safety (RBI Fair Practices Code) | `draft_guard.check_draft` | `noul` coercive / off-topic / leaks internal / discount / partial + `choice` upfront amount | Amount vs bill, % vs cap, upfront vs minimum | Code-side checks only |
+
+One reply is read with one request, about 0.5–2s and $0.00007. `Backend/scripts/jev_probe.py` runs the production questions over 70+ representative inputs (negations like "don't stop, I'll pay parso", Hinglish dates, injections, coercive drafts) and prints the raw probabilities; `--save` writes them to `test_suite/fixtures/`. Rerun it before changing `JEV_MODEL`, because thresholds do not carry between builds. The batch simulator and `recover-batch` stay model-free.
+
+---
+
 ## The cost-aware LLM router
 
-`operations/model_router.py` owns tier selection and provider failover. The recovery engine still owns every consequential decision.
+`operations/model_router.py` owns tier selection and provider failover for text generation, and for the judgment fallback when Jev is unavailable. The recovery engine still owns every consequential decision.
 
 Task floors: `CLASSIFY` and `DRAFT` start at nano, `DIAGNOSE` and `CONVERSE` at mini, `DECIDE` at full. A live `DRAFT` raises to mini. Stakes ≥ ₹25,000 raise one tier. Guardrail proximity (last retry, last voice attempt, discount near cap) raises one tier. OpenAI is tried first, Gemini on 429, missing key or transport error. An empty, refused, malformed or low-confidence response gets one stronger retry.
 
@@ -258,7 +278,7 @@ The three figures in the `complete` event are not additive and must not be summe
 
 `/live` runs one in-process `asyncio.Queue` per session (`operations/live_session.py`). The durable transaction, message, call, escalation and audit rows remain the record.
 
-Each human turn runs `screen_user_message()` ahead of the model, so opt-outs and disputes cannot be overridden by an LLM. On a clean turn the model proposes a tool, the gates evaluate it, the decision card streams out showing which rule armed, and only an approved action reaches a channel. The customer's side is scripted; the engine's decisions are real code.
+Each human turn is read by Jev (`read_reply`) ahead of any generative model, so opt-outs and disputes cannot be overridden by an LLM. The `judgment` SSE event carries the probabilities to the theatre's Jev panel. On a clean turn Jev picks a tool, the gates evaluate it, the decision card streams out showing which rule armed, and only an approved action reaches a channel. The customer's side is scripted; the engine's decisions are real code.
 
 ---
 
@@ -451,6 +471,8 @@ Runs locally on built-in defaults. Add to `Backend/.env` as needed:
 
 | Var | For |
 |---|---|
+| `OPEN_ROUTER` | Jev decisions via OpenRouter. Unset = every judgment takes its keyword / LLM fallback |
+| `JEV_MODEL` | Pinned Jev build, default `typesafe/jev-1.13-20260917` |
 | `GEMINI_API_KEY` / `OPENAI_API_KEY` | LLM router, either works, both optional |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Razorpay and MCP |
 | `ELEVENLABS_API_KEY`, `VAPI_API_KEY` | Voice |
@@ -463,7 +485,8 @@ Runs locally on built-in defaults. Add to `Backend/.env` as needed:
 ## Testing
 
 ```bash
-cd Backend && uv run pytest     # 377 passing in ~58s, almost all offline
+cd Backend && uv run pytest     # fully offline: an autouse fixture switches Jev off
+cd Backend && uv run python scripts/jev_probe.py   # live Jev probe (needs OPEN_ROUTER)
 cd Frontend && npm test         # vitest
 ```
 

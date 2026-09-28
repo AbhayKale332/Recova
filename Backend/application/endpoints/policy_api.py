@@ -13,7 +13,7 @@ get_policy ,
 sandbox_for ,
 update_policy ,
 )
-from application .operations .compliance_rules import screen_user_message
+from application .operations .reply_understanding import read_reply
 
 router =APIRouter (tags =["policy"])
 
@@ -27,6 +27,7 @@ StoppingRule .OPT_OUT :"Any opt-out (incl. Hinglish) halts all further contact, 
 StoppingRule .DISPUTE_FREEZE :"A dispute freezes automation and routes the case to a human.",
 StoppingRule .TRAI_QUIET_HOURS :"No outbound voice/messaging between 20:00–09:00 IST (TRAI); contact is deferred.",
 StoppingRule .VOICE_ATTEMPT_CAP :"At most 2 voice attempts per rolling 72-hour window.",
+StoppingRule .HUMAN_REVIEW :"An unclear stop, an already-paid claim, or hardship in a reply freezes automation until a person confirms.",
 }
 
 
@@ -93,11 +94,18 @@ class ScreenBody (BaseModel ):
 
 @router .post ("/policy/screen")
 def screen_message (body :ScreenBody )->dict :
-    """Run a customer message through the deterministic stopping-rule screener —
-    the adversarial defence that honours an opt-out even inside a prompt injection."""
-    verdict =screen_user_message (body .message )
+    """Run a customer message through the reply screen — Jev's probabilities
+    when it is reachable, the deterministic keyword screen otherwise. Either
+    way an opt-out inside a prompt injection is honoured."""
+    reading =read_reply (body .message )
+    verdict =reading .verdict
     return {
     "disposition":verdict .disposition ,
     "rule":verdict .rule .value if verdict .rule else None ,
     "reason":verdict .reason ,
+    "source":reading .source ,
+    "p2p_date":reading .p2p_date ,
+    "offer_amount_minor":reading .offer_amount_minor ,
+    "note":reading .note ,
+    "judgment":reading .summary ()if reading .judgments is not None else None ,
     }

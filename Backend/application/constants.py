@@ -99,6 +99,10 @@ class StoppingRule (str ,Enum ):
     DISPUTE_FREEZE ="DISPUTE_FREEZE"
     TRAI_QUIET_HOURS ="TRAI_QUIET_HOURS"
     VOICE_ATTEMPT_CAP ="VOICE_ATTEMPT_CAP"
+    # Jev read the reply as a possible stop, a claim of payment already made,
+    # or hardship, without clearing the stop gate: a person confirms before
+    # any further contact.
+    HUMAN_REVIEW ="HUMAN_REVIEW"
 
 
 class EscalationStatus (str ,Enum ):

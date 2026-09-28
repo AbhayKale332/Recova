@@ -34,6 +34,12 @@ class OrchestratorDeps :
     # the state as ``now_ist``.
     clock :Callable [[],datetime ]=field (default =now_ist )
 
+    # How an inbound customer message is read at ingest. None is the
+    # deterministic keyword screen (tests, the batch simulation); production
+    # wires reply_understanding.read_reply, which asks Jev and falls back to
+    # the same keyword screen on its own.
+    read_reply :Callable |None =None
+
 
 def build_recovery_graph (deps :OrchestratorDeps ,checkpointer =None ):
     # Nodes perform persistence and auditing; this builder defines only control-flow transitions.

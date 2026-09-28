@@ -27,9 +27,8 @@ from application .operations .conversation_service import build_call ,persona_fo
 from application .operations .playbook_map import DEFAULT_PLAYBOOK
 from application .operations .message_drafter import draft_message
 from application .operations .escalation_service import enqueue_escalation
-from application .operations .language_parser import extract_p2p_date
 from application .operations .reconciliation_service import compute_metrics
-from application .operations .compliance_rules import screen_user_message
+from application .operations .reply_understanding import ReplyReading ,read_reply ,stop_notice
 from application .operations .wire import _ser_msg
 
 Event =tuple [str ,dict ]
@@ -77,6 +76,7 @@ transaction_id :str ,
 pause :Callable [[float ],None ]=time .sleep ,
 drafter :Callable [[Session ,str ,str ],str ]|None =None ,
 locale :str ="en",
+reader :Callable [[str ],ReplyReading ]=read_reply ,
 )->Iterator [Event ]:
 
 
@@ -164,22 +164,24 @@ locale :str ="en",
 
 
     terminal :str |None =None
-    verdict =screen_user_message (reply )
+    # Jev reads the reply; the keyword screen answers when Jev is unavailable.
+    reading =reader (reply )
+    if reading .judgments is not None :
+        yield "judgment",reading .summary ()
+    verdict =reading .verdict
     if verdict .disposition =="TERMINATE":
         terminal ="CANCELLED"
         _stop (db ,transaction_id ,verdict .rule ,verdict .reason )
-        add_msg (MessageDirection .OUTBOUND ,MessageSender .SYSTEM ,
-        f"Opt-out honoured — all contact stopped ({verdict .rule .value }).")
+        add_msg (MessageDirection .OUTBOUND ,MessageSender .SYSTEM ,stop_notice (verdict ))
         yield "step",{"phase":"stopped","rule":verdict .rule .value }
     elif verdict .disposition =="ESCALATE":
         terminal ="ESCALATED"
         enqueue_escalation (db ,transaction_id =transaction_id ,reason =verdict .reason ,rule =verdict .rule )
         _stop (db ,transaction_id ,verdict .rule ,verdict .reason )
-        add_msg (MessageDirection .OUTBOUND ,MessageSender .SYSTEM ,
-        f"Dispute raised — automation frozen, escalated to a human ({verdict .rule .value }).")
+        add_msg (MessageDirection .OUTBOUND ,MessageSender .SYSTEM ,stop_notice (verdict ))
         yield "step",{"phase":"escalated","rule":verdict .rule .value }
     elif fc ==4 and run_outcome =="p2p":
-        p2p =extract_p2p_date (reply )
+        p2p =reading .p2p_date
         if p2p :
             meta ["p2p_date"]=p2p
             record_audit (db ,transaction_id =transaction_id ,node_name =NodeName .WAIT ,

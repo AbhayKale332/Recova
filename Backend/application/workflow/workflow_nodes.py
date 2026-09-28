@@ -26,9 +26,9 @@ from application .operations .compliance_rules import (
 VOICE_ATTEMPT_CAP ,
 is_within_quiet_hours ,
 retry_cap_exceeded ,
-screen_user_message ,
 voice_attempts_exhausted ,
 )
+from application .operations .reply_understanding import keyword_reading
 from application .constants import StoppingRule
 from application .helpers import next_quiet_hours_end ,next_salary_window
 from application .operations .playbook_map import PLAYBOOK_ACTION
@@ -79,12 +79,15 @@ def build_nodes (deps :"OrchestratorDeps")->dict [str ,Callable [[RecoveryState 
 
         # Screen customer intent before model diagnosis so opt-outs and disputes cannot be overridden.
         message =state .get ("user_message")
+        reading =None
         if message :
-            verdict =screen_user_message (message )
+            clock =state .get ("now_ist")or deps .clock ()
+            reading =(deps .read_reply or keyword_reading )(message ,today =clock .date ())
+            verdict =reading .verdict
             if verdict .disposition =="TERMINATE":
                 _finalize (
                 deps ,transaction_id ,"CANCELLED",NodeName .INGEST ,
-                {"stopping_rule":verdict .rule .value ,"reason":verdict .reason },
+                {"stopping_rule":verdict .rule .value ,"reason":verdict .reason ,"judgment":reading .summary ()},
                 Outcome .SUCCESS ,
                 )
                 return {"disposition":"CANCELLED","stopping_rule":verdict .rule .value }
@@ -94,7 +97,7 @@ def build_nodes (deps :"OrchestratorDeps")->dict [str ,Callable [[RecoveryState 
                 )
                 _finalize (
                 deps ,transaction_id ,"ESCALATED",NodeName .INGEST ,
-                {"stopping_rule":verdict .rule .value ,"reason":verdict .reason },
+                {"stopping_rule":verdict .rule .value ,"reason":verdict .reason ,"judgment":reading .summary ()},
                 Outcome .ESCALATED ,
                 )
                 return {"disposition":"ESCALATED","stopping_rule":verdict .rule .value }
@@ -103,6 +106,8 @@ def build_nodes (deps :"OrchestratorDeps")->dict [str ,Callable [[RecoveryState 
         "failure_class":int (txn .failure_class ),
         "retry_count":txn .retry_count ,
         "lifecycle":TransactionLifecycleState .DIAGNOSING .value ,
+        "reply_intent":reading .intent if reading else None ,
+        "reply_p2p_date":reading .p2p_date if reading else None ,
         }
 
     def diagnose (state :RecoveryState )->dict [str ,Any ]:
@@ -124,16 +129,28 @@ def build_nodes (deps :"OrchestratorDeps")->dict [str ,Callable [[RecoveryState 
                 diagnosis.recommended_playbook =Playbook (override )
             except ValueError :
                 pass
+        # Ingest already read the customer message; its intent and promise-to-pay
+        # date fill in whatever the diagnosis engine did not supply.
+        diagnosis .user_intent_detected =diagnosis .user_intent_detected or state .get ("reply_intent")
+        diagnosis .extracted_p2p_date =diagnosis .extracted_p2p_date or state .get ("reply_p2p_date")
+        payload ={
+        "root_cause":diagnosis .root_cause ,
+        "recommended_playbook":diagnosis .recommended_playbook .value ,
+        "confidence":diagnosis .confidence ,
+        }
+        if diagnosis .user_intent_detected :
+            payload ["user_intent_detected"]=diagnosis .user_intent_detected
+        if diagnosis .extracted_p2p_date :
+            payload ["extracted_p2p_date"]=diagnosis .extracted_p2p_date
+        judgment =getattr (deps .diagnosis ,"last_judgment",None )
+        if judgment :
+            payload ["judgment"]=judgment
         record_audit (
         deps .db ,
         transaction_id =transaction_id ,
         node_name =NodeName .DIAGNOSE ,
         action_type =ActionType .STATE_TRANSITION ,
-        payload ={
-        "root_cause":diagnosis .root_cause ,
-        "recommended_playbook":diagnosis .recommended_playbook .value ,
-        "confidence":diagnosis .confidence ,
-        },
+        payload =payload ,
         outcome =Outcome .SUCCESS ,
         )
         return {

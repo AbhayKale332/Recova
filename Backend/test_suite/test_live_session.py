@@ -224,3 +224,49 @@ def test_deleted_session_audit_trail_still_readable(client):
 def test_unknown_transaction_cannot_start_live_session(client):
     response = client.post("/api/v1/live/sessions", json={"transaction_id": "missing-txn"})
     assert response.status_code == 404
+
+
+def test_jev_reads_a_negated_stop_and_books_the_promise(client, monkeypatch):
+    """'don't stop' trips the keyword screen; Jev overrules it, the promise-to-pay
+    date becomes a reminder, and the route/judgment events name the Jev build."""
+    from application.operations import jev_client
+    from test_suite.jev_fake import MODEL, fake_decide
+
+    class ConverseOnly:
+        def call(self, task, prompt, **kwargs):
+            assert task == "CONVERSE", f"{task} should have gone to Jev"
+            return RoutedResult("Thank you, noted.", explain_route(task, **kwargs))
+
+    monkeypatch.setattr(agent_tools, "router", ConverseOnly())
+    monkeypatch.setattr(
+        jev_client,
+        "decide",
+        fake_decide({
+            "wants_no_contact": 0.02,
+            "commits_to_pay": 0.96,
+            "p2p_when": "day_after_tomorrow",
+            "tool": ("SEND_WHATSAPP", 0.9),
+        }),
+    )
+    created = client.post("/api/v1/live/sessions", json={"custom_case": _case()}).json()
+    response = client.post(
+        f"/api/v1/live/sessions/{created['session_id']}/reply",
+        json={"text": "don't stop, I will pay parso"},
+    )
+    assert response.json()["final_state"] != "CANCELLED"
+
+    session = get_session(created["session_id"])
+    queued = []
+    while not session.queue.empty():
+        item = session.queue.get_nowait()
+        if item is not None:
+            queued.append(item)
+    judgment = next(data for event, data in queued if event == "judgment")
+    assert judgment["disposition"] == "CONTINUE"
+    assert "overruled" in judgment["note"]
+    assert judgment["answers"]["wants_no_contact"]["p"] == 0.02
+    routes = [data for event, data in queued if event == "route"]
+    assert {r["task"] for r in routes if r["provider"] == "openrouter"} == {"SCREEN", "DECIDE"}
+    assert all(r["model"] == MODEL for r in routes if r["provider"] == "openrouter")
+    reminder = next(data for event, data in queued if event == "reminder")
+    assert reminder["kind"] == "promise_to_pay"

@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/States";
+import { JudgmentBars } from "@/components/live/JudgmentBars";
 import { useToast } from "@/components/Toast";
 import { useApi, useMutation, describeError } from "@/hooks/useApi";
 import { api } from "@/lib/api";
@@ -499,6 +500,13 @@ function MessageSandbox() {
               : undefined
           }
         />
+      ) : null}
+      {verdict?.judgment ? (
+        <div className="mt-3">
+          <JudgmentBars judgment={verdict.judgment} />
+        </div>
+      ) : verdict?.source === "keyword" ? (
+        <p className="mt-2 text-[11px] text-[var(--muted)]">{t.live.judgmentKeyword}</p>
       ) : null}
     </div>
   );

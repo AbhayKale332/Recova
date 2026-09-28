@@ -29,6 +29,11 @@ const LANE_LABEL = {
   in_flight: "laneInFlight",
 } as const;
 
+/** Sub-cent costs need more than two decimals to read as anything but $0.00. */
+function formatUsd(usd: number): string {
+  return usd >= 0.01 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(4)}`;
+}
+
 export function RoutingBreakdown({ complete }: { complete: SimComplete }) {
   const { t } = useI18n();
   const r = complete.routing;
@@ -65,6 +70,11 @@ export function RoutingBreakdown({ complete }: { complete: SimComplete }) {
             </span>
           </p>
           <p className="tabular mt-1 text-[12px] text-[var(--muted)]">{modelNote}</p>
+          {r.llm > 0 && r.jev_cost_usd_est != null ? (
+            <p className="tabular mt-0.5 text-[12px] text-[var(--muted)]">
+              {fillTemplate(t.routing.jevCostNote, { cost: formatUsd(r.jev_cost_usd_est) })}
+            </p>
+          ) : null}
         </div>
 
         <p className="tabular text-[13px] text-[var(--ink)]">

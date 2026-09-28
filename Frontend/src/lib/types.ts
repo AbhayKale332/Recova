@@ -6,6 +6,8 @@
  * these shapes — they are the contract.
  */
 
+import type { JevJudgment } from "@/lib/simulation";
+
 export interface ClassMetric {
   at_risk_inr: number; recovered_inr: number; count: number;
   recovered_count: number; recovery_rate: number;
@@ -147,7 +149,7 @@ export type Playbook = (typeof PLAYBOOKS)[number];
 
 export const STOPPING_RULES = [
   "NO_DOUBLE_CHARGE", "CROSS_DEVICE_COMPLETION", "RBI_MAX_RETRIES", "EXPLICIT_CANCEL",
-  "OPT_OUT", "DISPUTE_FREEZE", "TRAI_QUIET_HOURS", "VOICE_ATTEMPT_CAP",
+  "OPT_OUT", "DISPUTE_FREEZE", "TRAI_QUIET_HOURS", "VOICE_ATTEMPT_CAP", "HUMAN_REVIEW",
 ] as const;
 export type StoppingRule = (typeof STOPPING_RULES)[number];
 
@@ -218,6 +220,12 @@ export interface ScreenVerdict {
   disposition: "CONTINUE" | "TERMINATE" | "ESCALATE";
   rule: StoppingRule | null;
   reason: string;
+  /** "jev" when Jev read the message; "keyword" when the deterministic screen did. */
+  source?: "jev" | "keyword" | "empty";
+  p2p_date?: string | null;
+  offer_amount_minor?: number | null;
+  note?: string | null;
+  judgment?: JevJudgment | null;
 }
 
 /**

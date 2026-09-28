@@ -103,6 +103,18 @@ class Settings (BaseSettings ):
     # OpenAI — this is a real product decision, not a footnote.
     openai_free_tier :bool =False
 
+    # Jev (TypeSafe's System One decision model) via OpenRouter's Decisions API.
+    # It answers the bounded judgments - stop/dispute, promise-to-pay, tool
+    # choice, playbook, operator intent - as probabilities; generative models
+    # keep only the text. The model is pinned to a dated build, never the
+    # ~jev-latest alias: every threshold in the code was probed on this build.
+    open_router :str =""
+    jev_enabled :bool =True
+    jev_model :str ="typesafe/jev-1.13-20260917"
+    jev_url :str ="https://openrouter.ai/api/alpha/decisions"
+    # Observed ~3s per call on 2026-09-28.
+    jev_timeout_s :float =8.0
+
 
 
 

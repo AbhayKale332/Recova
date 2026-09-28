@@ -9,6 +9,10 @@ class RecoveryState (TypedDict ,total =False ):
     failure_class :int
     telemetry :dict [str ,Any ]
     user_message :Optional [str ]
+    # What ingest read in user_message, for diagnosis to reuse without a
+    # second model call.
+    reply_intent :Optional [str ]
+    reply_p2p_date :Optional [str ]
 
     lifecycle :str
     playbook :Optional [str ]

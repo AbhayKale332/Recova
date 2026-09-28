@@ -7,6 +7,7 @@ import { AuditTicker } from "@/components/live/AuditTicker";
 import { CallStage } from "@/components/live/CallStage";
 import { DecisionCard } from "@/components/live/DecisionCard";
 import { PhoneFrame } from "@/components/live/PhoneFrame";
+import { JudgmentBars } from "@/components/live/JudgmentBars";
 import { RouterChip } from "@/components/live/RouterChip";
 import { WhatsAppThread } from "@/components/live/WhatsAppThread";
 import { BoundsGauge } from "@/components/sim/BoundsGauge";
@@ -178,6 +179,7 @@ export function LiveScreen() {
 
         <section aria-label={t.live.agentColumn} className="order-2 flex flex-col gap-3 lg:order-1">
           <RouterChip route={session.route} />
+          <JudgmentBars judgment={session.judgment} />
           <DecisionCard decision={session.decision} />
           {session.bounds ? (
             <div className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5">

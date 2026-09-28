@@ -47,6 +47,10 @@ function describe(event: LiveTurnEvent): string {
       return event.data.provider === "deterministic"
         ? `${event.data.task}: seeded, no model call`
         : `${event.data.task} routed to ${event.data.provider} · ${event.data.model}`;
+    case "judgment":
+      return event.data.source === "keyword"
+        ? "Reply read by the keyword screen"
+        : `Jev read the reply → ${event.data.reason ?? humanizeEnum(event.data.disposition)}`;
     case "decision":
       return event.data.requested_tool && event.data.requested_tool !== event.data.tool
         ? `${humanizeEnum(event.data.requested_tool)} refused → ${humanizeEnum(event.data.tool)}`

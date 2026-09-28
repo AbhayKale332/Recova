@@ -173,6 +173,7 @@ def test_summarise_partitions_the_lanes_and_keeps_llm_outside_the_sum ():
     assert summary ["deterministic_only"]==2
     assert summary ["model_calls_saved"]==2 and summary ["model_calls_made"]==0
     assert summary ["llm_reasons"][triage .REASON_STAKES ]==2
+    assert summary ["jev_cost_usd_est"]==2 *triage .JEV_COST_PER_CASE_USD
 
 
 # ── Scenario planning ────────────────────────────────────────────────────────

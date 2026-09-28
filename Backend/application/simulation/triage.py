@@ -49,6 +49,11 @@ REASON_NO_TELEMETRY = "no machine signal to diagnose from"
 REASON_STAKES = "high value at stake"
 REASON_GUARDRAIL = "one step from a guardrail"
 
+# In production these judgments go to Jev, not an LLM. Measured 2026-09-28 on
+# jev-1.13: one reply read (~1,600 input tokens) $0.000066 + one diagnosis
+# $0.000035. Completion tokens are free. An estimate for the console, not a bill.
+JEV_COST_PER_CASE_USD = 0.0001
+
 LANE_CLOSED = "closed"
 LANE_HUMAN = "human"
 LANE_POSTPONED = "postponed"
@@ -155,4 +160,6 @@ def summarise(
         "model_calls_made": llm if live_diagnosis else 0,
         "model_calls_saved": 0 if live_diagnosis else llm,
         "llm_reasons": dict(reason_counts),
+        # The same cases, priced as Jev judgments.
+        "jev_cost_usd_est": round(llm * JEV_COST_PER_CASE_USD, 6),
     }

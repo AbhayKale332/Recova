@@ -93,13 +93,14 @@ export const en = {
     title: "How the book was handled",
     subtitle:
       "Who made the call on each case — deterministic code, the advisory model, or a person.",
-    llmLabel: "Would use the model",
+    llmLabel: "Would use a model judgment",
     llmHint:
       "An advisory call is warranted: a free-text reply the screen can't classify, a diagnosis with no machine signal, high stakes, or a case one step from a guardrail.",
     deterministicLabel: "Deterministic only",
     deterministicHint: "Resolved by model-free code start to finish.",
     savedNote: "{count} model calls avoided this run",
     madeNote: "{count} model calls made",
+    jevCostNote: "In production these are Jev judgments — about {cost} for the lot",
     overlapNote:
       "Model use overlaps the lanes below — a case can consult the model and still close without a person.",
     laneClosed: "Closed on its own",
@@ -444,6 +445,10 @@ export const en = {
     raise_stakes: "stakes",
     raise_guardrail_proximity: "guardrail proximity",
     escalatedFrom: "Escalated from {tier}",
+
+    judgmentTitle: "Jev judgment",
+    judgmentKeyword: "Keyword screen — Jev unavailable",
+    judgmentMeta: "{model} · {ms} ms",
 
     decisionTitle: "Decision",
     decisionEmpty: "Waiting for the first decision.",

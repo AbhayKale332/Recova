@@ -88,13 +88,14 @@ export const hi: Dictionary = {
     title: "बुक को कैसे संभाला गया",
     subtitle:
       "हर केस पर फ़ैसला किसने लिया — नियमबद्ध कोड, सलाहकार मॉडल, या कोई व्यक्ति।",
-    llmLabel: "मॉडल का उपयोग होगा",
+    llmLabel: "मॉडल आकलन का उपयोग होगा",
     llmHint:
       "सलाहकार कॉल उचित है: ऐसा फ़्री-टेक्स्ट जवाब जिसे स्क्रीन वर्गीकृत नहीं कर सकती, बिना मशीन संकेत वाला निदान, ऊँचा दांव, या गार्डरेल से एक कदम दूर केस।",
     deterministicLabel: "केवल नियमबद्ध",
     deterministicHint: "शुरू से अंत तक बिना-मॉडल कोड से हल हुआ।",
     savedNote: "इस रन में {count} मॉडल कॉल बचाई गईं",
     madeNote: "{count} मॉडल कॉल की गईं",
+    jevCostNote: "प्रोडक्शन में ये Jev आकलन हैं — कुल लगभग {cost}",
     overlapNote:
       "मॉडल का उपयोग नीचे की लेनों से ओवरलैप करता है — एक केस मॉडल से सलाह ले सकता है और फिर भी बिना व्यक्ति के बंद हो सकता है।",
     laneClosed: "अपने आप बंद हुआ",
@@ -429,6 +430,10 @@ export const hi: Dictionary = {
     raise_stakes: "राशि",
     raise_guardrail_proximity: "गार्डरेल निकटता",
     escalatedFrom: "{tier} से अपग्रेड",
+
+    judgmentTitle: "Jev का आकलन",
+    judgmentKeyword: "कीवर्ड स्क्रीन — Jev उपलब्ध नहीं",
+    judgmentMeta: "{model} · {ms} ms",
 
     decisionTitle: "निर्णय",
     decisionEmpty: "पहले निर्णय की प्रतीक्षा।",

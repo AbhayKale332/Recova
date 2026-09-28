@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime
 from enum import Enum
 from numbers import Real
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from sqlalchemy.orm import Session
 
@@ -58,6 +58,12 @@ from application.operations.model_router import (
 from application.operations.policy_guard import PolicySandbox, ProposedAction
 from application.operations.repayment_model import predict_for_case
 from application.operations.voice_attempts import voice_attempt_count
+from application.settings import settings
+from application.operations import jev_client
+from application.operations.jev_client import DecisionUnavailable, route_decision_for
+
+if TYPE_CHECKING:
+    from application.operations.reply_understanding import ReplyReading
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +273,164 @@ def _decide_prompt(
     )
     lines.append("Never invent a tool, widen the policy, or treat a disposition as a channel dispatch.")
     return "\n".join(lines)
+
+
+# ------------------------------------------------------------- Jev DECIDE
+# Jev picks the tool; code supplies every number (amounts, deadline, discount)
+# and the generative model writes the message. The LLM DECIDE prompt above
+# remains the fallback when Jev is unavailable.
+
+# Below this, the choice is spread across tools and the class default is the
+# safer proposal. Set from scripts/jev_probe.py (2026-09-28): clear turns
+# scored 0.83-1.00 on the chosen tool; the two ambiguous ones ("15 tarikh ko",
+# "what is this for?") split ~0.5/0.5 with confidence 0.45-0.46.
+DECIDE_MIN_CONFIDENCE = 0.5
+
+_TOOL_CRITERIA: dict[AgentTool, str] = {
+    AgentTool.SEND_WHATSAPP: (
+        "Send a WhatsApp message: a routine reminder, answering a question, or acknowledging a "
+        "promise to pay on a later date. Fits when nothing more is needed right now."
+    ),
+    AgentTool.VOICE_CALL: (
+        "Phone the customer. Fits when WhatsApp nudges are exhausted without payment, or the "
+        "customer asks to talk. Not when no voice calls are available."
+    ),
+    AgentTool.GENERATE_PAYMENT_LINK: (
+        "Send a payment link. Fits when the customer is ready to pay now, asks how to pay, or "
+        "offers an amount to pay now."
+    ),
+    AgentTool.GENERATE_QR_CODE: "Send a UPI QR code. Fits when the customer asks for a QR code or to pay by scanning with UPI.",
+    AgentTool.OFFER_PARTIAL_PLAN: (
+        "Take part of the amount now and book the balance for later. Fits when the customer "
+        "cannot pay the whole amount now but offers or accepts paying part of it, and partial "
+        "payment is allowed."
+    ),
+    AgentTool.OFFER_FEE_WAIVER: (
+        "Offer a late-fee waiver or small discount. Fits when the customer hesitates over the "
+        "cost or asks for a concession, and a discount is allowed."
+    ),
+    AgentTool.SCHEDULE_RETRY: (
+        "Retry the automatic debit later, after the customer's money arrives (e.g. salary day). "
+        "Fits a failed auto-debit when the customer says funds come later and retries remain."
+    ),
+    AgentTool.HANDOFF_TO_HUMAN: (
+        "Hand the case to a person. Fits when the customer is upset or confused, asks something "
+        "these tools cannot answer, or the case needs judgement beyond them."
+    ),
+    AgentTool.STOP: "Stop all recovery. Fits only when the customer asked to stop contact or cancel.",
+}
+
+_CLASS_SITUATION = {
+    FailureClass.REALTIME_DEGRADATION: "The payment failed because of a bank or network outage at checkout.",
+    FailureClass.CHECKOUT_ABANDONMENT: "The customer abandoned checkout before completing payment.",
+    FailureClass.SUBSCRIPTION_MANDATE: "A recurring auto-debit (subscription mandate) failed.",
+    FailureClass.B2B_RECEIVABLES: "A business invoice is overdue.",
+}
+
+
+def _offered_tools(policy: dict[str, Any]) -> list[AgentTool]:
+    """Tools the merchant policy permits at all. Timing gates stay in gate_tool."""
+    actions = set(policy.get("allowed_actions") or [])
+    channels = set(policy.get("allowed_channels") or [])
+    offered = []
+    for tool, (action, channel, _state) in _TOOL_RESOLUTION.items():
+        if action is not None and action.value not in actions:
+            continue
+        if channel is not None and channel.value not in channels:
+            continue
+        offered.append(tool)
+    return offered
+
+
+def _jev_decide_payload(
+    txn: TransactionState,
+    fc: FailureClass,
+    *,
+    policy: dict[str, Any],
+    voice_attempts: int,
+    whatsapp_nudges: int,
+    recent_messages: list[str],
+    repayment: Any,
+    reading: "ReplyReading | None",
+    customer_text: str | None,
+    route_discount: float | None,
+    today: date,
+    jev: Callable[..., jev_client.Judgments] | None,
+) -> tuple[dict[str, Any], RouteDecision]:
+    """Ask Jev for the tool and assemble a DECIDE payload of the LLM's shape."""
+    offered = _offered_tools(policy)
+    meta = getattr(txn, "metadata_json", None) or {}
+    facts: dict[str, Any] = {}
+    if reading is not None and reading.judgments is not None:
+        facts = {
+            "commits_to_pay": reading.commits_to_pay,
+            "offers_a_partial_amount": reading.offer_amount_minor is not None,
+            "gave_a_payment_date": reading.p2p_date is not None,
+        }
+    state = {
+        "situation": _CLASS_SITUATION[fc],
+        "amount": "high value" if txn.amount_minor / 100 >= settings.router_stakes_threshold_inr else "routine value",
+        # Plain comparisons, not the gate helpers: gate_tool alone evaluates the
+        # gates, in their fixed order, after the proposal.
+        "auto_debit_retries_available": txn.retry_count < txn.max_retries,
+        "voice_calls_available": voice_attempts < VOICE_ATTEMPT_CAP,
+        "whatsapp_nudges_exhausted": whatsapp_nudges >= WHATSAPP_NUDGE_CAP,
+        "partial_payment_allowed": bool(policy.get("allow_partial_payment", True)),
+        "discount_allowed": float(policy.get("max_discount_pct") or 0) > 0,
+        "partial_plan_already_booked": meta.get("balance_due_minor") is not None,
+        "repayment_likelihood": getattr(repayment, "band", "unknown"),
+        "latest_customer_reply": customer_text or "",
+        "reply_facts": facts,
+        "recent_thread": recent_messages,
+    }
+    question = jev_client.choice(
+        "Which one next step should the payment-recovery agent take for this customer, given "
+        "`latest_customer_reply`, `recent_thread`, and the case facts? Follow the customer's "
+        "latest reply first.",
+        {tool.value: _TOOL_CRITERIA[tool] for tool in offered},
+    )
+    judgments = (jev or jev_client.decide)(state, {"tool": question})
+    picked = judgments.choice("tool")
+    ranked = sorted(picked.probabilities.items(), key=lambda kv: kv[1], reverse=True)[:3]
+    spread = ", ".join(f"{name} {p:.2f}" for name, p in ranked)
+    confidence = picked.confidence if picked.confidence is not None else 1.0
+
+    if confidence < DECIDE_MIN_CONFIDENCE:
+        tool = _tool_for_playbook(DEFAULT_PLAYBOOK[fc])
+        reason = f"Jev unsure ({spread}; confidence {confidence:.2f}) → class default {tool.value}"
+    else:
+        tool = AgentTool(picked.choice)
+        reason = f"Jev chose {tool.value} ({spread})"
+
+    amount_inr = txn.amount_minor / 100
+    partial_inr: float | None = None
+    if reading is not None and reading.offer_amount_minor is not None:
+        partial_inr = reading.offer_amount_minor / 100
+    elif tool == AgentTool.OFFER_PARTIAL_PLAN:
+        partial_inr = amount_inr * int(policy.get("min_partial_payment_pct", 50)) / 100
+    ceiling_minor = policy.get("max_intervention_amount_minor")
+    if (
+        tool in (AgentTool.OFFER_PARTIAL_PLAN, AgentTool.GENERATE_PAYMENT_LINK, AgentTool.GENERATE_QR_CODE)
+        and ceiling_minor is not None
+        and bool(policy.get("allow_partial_payment", True))
+        and (partial_inr or amount_inr) * 100 > int(ceiling_minor)
+    ):
+        # Ask for what the policy can accept rather than a full amount it would refuse.
+        partial_inr = int(ceiling_minor) / 100
+
+    deadline_days = None
+    if reading is not None and reading.p2p_date:
+        deadline_days = (date.fromisoformat(reading.p2p_date) - today).days or None
+
+    payload = {
+        "tool": tool.value,
+        "reason": reason,
+        "message": None,
+        "discount_pct": route_discount,
+        "partial_amount_inr": partial_inr,
+        "deadline_days": deadline_days,
+    }
+    return payload, route_decision_for("DECIDE", judgments, reason)
 
 
 def _route_fallback(task: str, **kwargs: Any) -> RouteDecision:
@@ -548,8 +712,16 @@ def decide_tool(
     now_ist: datetime | None = None,
     model_router: ModelRouter | None = None,
     sandbox: PolicySandbox | None = None,
+    reading: "ReplyReading | None" = None,
+    use_jev: bool = True,
+    jev: Callable[..., jev_client.Judgments] | None = None,
 ) -> AgentDecision:
     """Route a model proposal for one tool, then run it through ``gate_tool``.
+
+    Jev picks the tool when it is reachable (``use_jev``); otherwise the LLM
+    DECIDE prompt does, and failing that the class default. ``reading`` is the
+    Jev reading of ``customer_text`` - its offer amount and promise-to-pay
+    date become the partial amount and deadline.
 
     Call it exactly once per turn. It does not dispatch a channel adapter;
     callers use the returned decision to perform an allowed dispatch.
@@ -607,12 +779,34 @@ def decide_tool(
 
     routed: Any = None
     route_decision: RouteDecision
+    jev_payload: dict[str, Any] | None = None
+    if use_jev:
+        try:
+            jev_payload, route_decision = _jev_decide_payload(
+                txn,
+                fc,
+                policy=policy,
+                voice_attempts=attempts,
+                whatsapp_nudges=nudges,
+                recent_messages=recent,
+                repayment=repayment,
+                reading=reading,
+                customer_text=customer_text,
+                route_discount=route_discount,
+                today=clock.date(),
+                jev=jev,
+            )
+        except DecisionUnavailable as exc:
+            logger.info("Jev DECIDE unavailable (%s); using the LLM DECIDE prompt.", exc)
     try:
-        routed = active_router.call("DECIDE", prompt, **route_kwargs)
-        route_decision = routed.decision
-        payload = json.loads(routed.result)
-        if not isinstance(payload, dict):
-            raise ValueError("DECIDE response must be a JSON object")
+        if jev_payload is not None:
+            payload = jev_payload
+        else:
+            routed = active_router.call("DECIDE", prompt, **route_kwargs)
+            route_decision = routed.decision
+            payload = json.loads(routed.result)
+            if not isinstance(payload, dict):
+                raise ValueError("DECIDE response must be a JSON object")
     except ProviderUnavailable as exc:
         logger.warning("DECIDE providers unavailable; applying the class default tool: %s", exc)
         route_decision = getattr(exc, "decision", None) or _route_fallback("DECIDE", **route_kwargs)

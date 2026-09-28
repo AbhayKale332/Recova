@@ -8,6 +8,9 @@ from typing import Callable
 from sqlalchemy .orm import Session
 
 from application .entities import Message ,TransactionState
+from application .constants import ActionType ,NodeName ,Outcome
+from application .operations .audit_service import record_audit
+from application .operations .draft_guard import check_draft
 
 logger =logging .getLogger (__name__ )
 
@@ -109,10 +112,23 @@ locale :str ="en",
     if gen is not None :
         try :
             text =gen (full_prompt ).strip ().strip ('"')
-            if text :
-                return text
         except Exception as exc :
             logger .warning ("Message drafting failed (%s); using the standard template.",exc )
+            text =""
+        if text :
+            # Only a generated draft is checked; the template is fixed copy.
+            verdict =check_draft (text ,amount_inr =amount_inr ,policy =policy )
+            if verdict .ok :
+                return text
+            logger .warning ("Draft blocked (%s); using the standard template.","; ".join (verdict .reasons ))
+            record_audit (
+            db ,
+            transaction_id =transaction_id ,
+            node_name =NodeName .EXECUTE_INTERVENTION ,
+            action_type =ActionType .STATE_TRANSITION ,
+            payload ={"event":"DRAFT_BLOCKED","blocked_draft":text ,**verdict .summary ()},
+            outcome =Outcome .FAILURE ,
+            )
 
     return _fallback (txn ,prompt ,locale )
 

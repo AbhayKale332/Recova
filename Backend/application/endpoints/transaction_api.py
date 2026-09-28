@@ -29,6 +29,7 @@ from application .operations .conversation_service import build_call ,persona_fo
 from application .operations .message_drafter import draft_message
 from application .operations .escalation_service import enqueue_escalation
 from application .operations .live_recovery import run_recovery
+from application .operations .reply_understanding import keyword_reading
 from application .operations .compliance_rules import (
 VOICE_ATTEMPT_CAP ,
 is_within_quiet_hours ,
@@ -551,7 +552,7 @@ def recover_batch (payload :RecoverBatchBody ,db :Session =Depends (get_db ))->d
         if db .query (TransactionState ).filter_by (transaction_id =tid ).one_or_none ()is None :
             continue
         final =None
-        for event ,data in run_recovery (db ,tid ,pause =lambda _s :None ,drafter =drafter ):
+        for event ,data in run_recovery (db ,tid ,pause =lambda _s :None ,drafter =drafter ,reader =keyword_reading ):
             if event =="complete":
                 final =data .get ("final_state")
         results .append ({"transaction_id":tid ,"final_state":final })

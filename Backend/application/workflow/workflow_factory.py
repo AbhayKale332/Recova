@@ -13,6 +13,7 @@ def get_orchestrator_deps (db :Session =Depends (get_db ))->OrchestratorDeps :
 
 
     from application .operations .ai_client import default_diagnosis_engine
+    from application .operations .reply_understanding import read_reply
 
     return OrchestratorDeps (
     db =db ,
@@ -20,4 +21,5 @@ def get_orchestrator_deps (db :Session =Depends (get_db ))->OrchestratorDeps :
 
     sandbox =sandbox_for (db ),
     dispatch =build_dispatcher (db ),
+    read_reply =read_reply ,
     )

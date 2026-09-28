@@ -51,14 +51,15 @@ from application.integrations.razorpay_mcp import payment_render_variant
 from application.operations import agent_tools, payment_artifacts
 from application.operations.agent_tools import AgentDecision, AgentTool, decide_tool
 from application.operations.audit_service import record_audit
-from application.operations.compliance_rules import is_within_quiet_hours, screen_user_message
+from application.operations.compliance_rules import is_within_quiet_hours
 from application.operations.batch_seed import class_profile
-from application.operations.language_parser import extract_p2p_date
+from application.operations.jev_client import route_decision_for
 from application.operations.message_drafter import draft_message
 from application.operations.model_router import ProviderUnavailable, RouteDecision, RoutedResult, explain_route
 from application.operations.policy_repository import get_policy
 from application.operations.playbook_map import DEFAULT_PLAYBOOK, PLAYBOOK_ACTION
 from application.operations.reconciliation_service import compute_metrics
+from application.operations.reply_understanding import ReplyReading, read_reply, stop_notice
 from application.operations.voice_attempts import voice_attempt_count
 from application.operations.wire import _ser_msg
 from application.simulation.scenario import CaseShape, CustomCase, Scenario, plan, to_transaction
@@ -370,6 +371,13 @@ class LiveSession:
     def _route(self, decision: RouteDecision) -> None:
         self.emit("route", decision.as_dict())
 
+    def _judged(self, reading: ReplyReading) -> None:
+        """Show a Jev reading: the route chip plus the probabilities behind it."""
+        if reading.judgments is None:
+            return
+        self._route(route_decision_for("SCREEN", reading.judgments, f"Jev read the reply → {reading.verdict.reason}"))
+        self.emit("judgment", reading.summary())
+
     def _opening(self, db: Session) -> None:
         txn = self._txn(db)
         fc = FailureClass(txn.failure_class)
@@ -412,6 +420,7 @@ class LiveSession:
             failure_class=fc,
             now_ist=self.clock(),
             model_router=_DeterministicOpeningRouter(_tool_for_playbook(playbook)),
+            use_jev=False,
         )
         self.last_decision = opening_decision
         self.emit("decision", opening_decision.as_dict())
@@ -639,7 +648,7 @@ class LiveSession:
         self.terminal = True
         self._signal_end()
 
-    def _screened_stop(self, db: Session, verdict: Any) -> None:
+    def _screened_stop(self, db: Session, verdict: Any, reading: ReplyReading | None = None) -> None:
         txn = self._txn(db)
         if verdict.disposition == "ESCALATE":
             from application.operations.escalation_service import enqueue_escalation
@@ -659,14 +668,15 @@ class LiveSession:
             transaction_id=self.transaction_id,
             node_name=NodeName.INGEST,
             action_type=ActionType.STATE_TRANSITION,
-            payload={"stopping_rule": verdict.rule.value, "reason": verdict.reason, "live_session_id": self.session_id},
+            payload={
+                "stopping_rule": verdict.rule.value,
+                "reason": verdict.reason,
+                "live_session_id": self.session_id,
+                **({"judgment": reading.summary()} if reading is not None else {}),
+            },
             outcome=outcome,
         )
-        text = (
-            f"Dispute raised — automation frozen, escalated to a human ({verdict.rule.value})."
-            if final == TransactionLifecycleState.ESCALATED
-            else f"Opt-out honoured — all contact stopped ({verdict.rule.value})."
-        )
+        text = stop_notice(verdict)
         message = self._add_message(db, MessageDirection.OUTBOUND, MessageSender.SYSTEM, text)
         self.emit("step", {"phase": phase, "rule": verdict.rule.value})
         self.emit("message", _ser_msg(message))
@@ -702,7 +712,7 @@ class LiveSession:
         route = route or explain_route("CONVERSE", amount_inr=txn.amount_minor / 100, live=True)
         return body, route
 
-    def _maybe_add_reminder(self, db: Session, customer_text: str, decision: AgentDecision) -> None:
+    def _maybe_add_reminder(self, db: Session, reading: ReplyReading, decision: AgentDecision) -> None:
         """When the customer commits to a pay date, or the agent books a partial
         plan, record a calendar reminder on the case and tell the client so it
         can surface "Reminder added to calendar" and show it on the calendar."""
@@ -711,7 +721,7 @@ class LiveSession:
             decision.action == InterventionAction.OFFER_PARTIAL_PLAN
             or decision.tool == AgentTool.OFFER_PARTIAL_PLAN
         )
-        p2p = extract_p2p_date(customer_text, clock.date())
+        p2p = reading.p2p_date
 
         if is_partial:
             days = decision.deadline_days or settings.partial_plan_default_days
@@ -758,11 +768,14 @@ class LiveSession:
         message = self._add_message(db, MessageDirection.INBOUND, MessageSender.CUSTOMER, text)
         self.emit("message", _ser_msg(message))
 
-        # This gate is deliberately before _converse: no model sees an opt-out
-        # or dispute, and no LLM output can override either disposition.
-        verdict = screen_user_message(text)
+        # This gate is deliberately before _converse: no generative model sees an
+        # opt-out or dispute, and no LLM output can override either disposition.
+        # Jev reads the reply (keyword screen if Jev is unavailable).
+        reading = read_reply(text, today=self.clock().date(), session_id=self.session_id)
+        self._judged(reading)
+        verdict = reading.verdict
         if verdict.disposition in {"TERMINATE", "ESCALATE"}:
-            self._screened_stop(db, verdict)
+            self._screened_stop(db, verdict, reading)
             return {"session_id": self.session_id, "final_state": self._txn(db).current_state.value}
 
         txn = self._txn(db)
@@ -776,12 +789,13 @@ class LiveSession:
             now_ist=self.clock(),
             customer_text=text,
             agent_draft=body,
+            reading=reading,
         )
         self.last_decision = decision
         self._route(decision.route_decision)
         self.emit("decision", decision.as_dict())
         self._apply_agent_decision(db, decision, body)
-        self._maybe_add_reminder(db, text, decision)
+        self._maybe_add_reminder(db, reading, decision)
         txn = self._txn(db)
         if not self.terminal:
             self.emit("bounds", _bounds(db, txn, clock=self.clock))

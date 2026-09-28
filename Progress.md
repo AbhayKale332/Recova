@@ -249,6 +249,34 @@ Part B (voice), Part C (`main_vision.md`), and Part D cleanup remain intentional
 
 ---
 
+## Jev-first pivot
+
+Implemented 2026-09-29. Plan: `~/.claude/plans/iridescent-waddling-sifakis.md`.
+
+Every bounded judgment now goes to Jev (`typesafe/jev-1.13-20260917` via OpenRouter's Decisions
+API, key `OPEN_ROUTER`). Code keeps the thresholds and the arithmetic, and the LLM only writes text.
+Each call site falls back to its previous path when Jev is unavailable.
+
+- [x] Part 1: `operations/jev_client.py` (sync httpx, typed answers, `DecisionUnavailable`),
+      settings, `.env.sample`, compose, and the autouse `jev_offline` test fixture.
+- [x] Part 2: `operations/reply_understanding.py` covers stop/dispute/injection/already-paid/hardship,
+      the promise-to-pay date and the offer amount in one request. It is wired into `live_session`,
+      `workflow_nodes.ingest`, `live_recovery` and `POST /policy/screen`. New `StoppingRule.HUMAN_REVIEW`.
+- [x] Part 3: Jev picks the `AgentTool` in `decide_tool`; the offer and p2p date become the partial
+      amount and deadline. The opening turn stays seeded (`use_jev=False`).
+- [x] Part 4: Jev picks the playbook and root cause in `DiagnosisEngine` (`PLAYBOOK_CRITERIA`, `ROOT_CAUSES`).
+- [x] Part 5: Jev parses operator intent in `assistant_service`; the LLM runs only for `answer`.
+- [x] Part 6: `operations/draft_guard.py` (RBI Fair Practices Code), triage `jev_cost_usd_est`,
+      and a `jev` block on `/router/explain`.
+- [x] Part 7: `Backend/scripts/jev_probe.py`, 71/71 cases as intended. Results are in
+      `test_suite/fixtures/jev_probe_2026-09-29.json`.
+- [x] Part 8: `JudgmentBars` on `/live` and in the guardrails sandbox, the `judgment` SSE event,
+      `HUMAN_REVIEW` copy, and the routing cost note.
+
+Model-free by design: the batch simulator (`simulation/*`), `batch_seed`, and `POST /transactions/recover-batch`.
+
+---
+
 ## Deployment
 
 | Surface | URL |

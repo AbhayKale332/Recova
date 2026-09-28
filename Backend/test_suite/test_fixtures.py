@@ -54,6 +54,21 @@ def rate_limit_disabled ():
         settings .rate_limit_enabled =original
 
 
+# Backend/.env holds a real OPEN_ROUTER key, so Jev is switched off for the whole
+# suite: every call site takes its fallback path and no test reaches the network.
+# Tests that exercise Jev turn it back on and inject a fake transport or decide().
+@pytest .fixture (autouse =True )
+def jev_offline ():
+    from application .settings import settings
+
+    original =settings .jev_enabled
+    settings .jev_enabled =False
+    try :
+        yield
+    finally :
+        settings .jev_enabled =original
+
+
 # Tests use an isolated in-memory database so they never mutate the runtime SQLite file.
 @pytest .fixture ()
 def db_session ():

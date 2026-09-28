@@ -115,6 +115,10 @@ export const STOPPING_RULE_COPY: Record<StoppingRule, { en: string; hi: string }
     en: "At most 2 voice calls in 72 hours",
     hi: "72 घंटों में अधिकतम 2 वॉइस कॉल",
   },
+  HUMAN_REVIEW: {
+    en: "An unclear reply, an already-paid claim, or hardship — a person confirms first",
+    hi: "अस्पष्ट जवाब, पहले ही भुगतान का दावा, या कठिनाई — पहले कोई व्यक्ति पुष्टि करे",
+  },
 };
 
 export function stoppingRuleText(

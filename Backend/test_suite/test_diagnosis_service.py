@@ -89,3 +89,51 @@ def test_prompt_includes_user_message_when_present ():
     )
 
     assert "next Friday"in seen ["prompt"]
+
+
+# ---------------------------------------------------------------- Jev diagnosis
+
+from application.constants import FailureClass as _FC, Playbook as _PB  # noqa: E402
+from application.operations.diagnosis_service import DiagnosisEngine as _Engine  # noqa: E402
+from test_suite.jev_fake import fake_decide as _fake  # noqa: E402
+
+
+def _llm_must_not_run(_prompt):
+    raise AssertionError("the LLM must not be asked when Jev answers")
+
+
+def test_jev_picks_playbook_and_root_cause():
+    engine = _Engine(generate=_llm_must_not_run, jev=_fake({"playbook": ("MANDATE_REFRESH", 0.95), "root_cause": "TOKEN_EXPIRED"}))
+    d = engine.diagnose(failure_class=_FC.SUBSCRIPTION_MANDATE, telemetry={"error_code": "TOKEN_EXPIRED", "amount_minor": 100})
+    assert d.recommended_playbook == _PB.MANDATE_REFRESH
+    assert d.root_cause == "TOKEN_EXPIRED"
+    assert engine.last_route_decision.provider == "openrouter"
+    assert engine.last_judgment["answers"]["playbook"]["choice"] == "MANDATE_REFRESH"
+
+
+def test_jev_state_carries_no_amount():
+    calls = []
+    _Engine(generate=_llm_must_not_run, jev=_fake({"playbook": ("REROUTE_RAIL", 0.9)}, calls=calls)).diagnose(
+        failure_class=_FC.REALTIME_DEGRADATION, telemetry={"error_code": "GATEWAY_TIMEOUT", "amount_minor": 999}
+    )
+    assert "amount_minor" not in calls[0]["state"]["gateway_signals"]
+    assert set(calls[0]["questions"]["root_cause"]["criteria"]) >= {"ISSUER_LATENCY_SPIKE", "UNKNOWN"}
+
+
+def test_jev_low_confidence_uses_class_default():
+    engine = _Engine(generate=_llm_must_not_run, jev=_fake({"playbook": ("NEGOTIATION", 0.3)}))
+    d = engine.diagnose(failure_class=_FC.B2B_RECEIVABLES, telemetry={})
+    assert d.recommended_playbook == _PB.P2P_TRACKER
+
+
+def test_jev_unknown_root_cause_reads_as_undiagnosed():
+    engine = _Engine(generate=_llm_must_not_run, jev=_fake({"playbook": ("REROUTE_RAIL", 0.9), "root_cause": "UNKNOWN"}))
+    assert engine.diagnose(failure_class=_FC.REALTIME_DEGRADATION, telemetry={}).root_cause == "UNDIAGNOSED"
+
+
+def test_jev_outage_falls_back_to_the_llm():
+    payload = '{"root_cause": "LLM", "recommended_playbook": "REROUTE_RAIL", "confidence": 0.8}'
+    engine = _Engine(generate=lambda _p: payload, jev=_fake(fail=True))
+    d = engine.diagnose(failure_class=_FC.REALTIME_DEGRADATION, telemetry={})
+    assert d.root_cause == "LLM"
+    assert engine.last_judgment is None

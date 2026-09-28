@@ -230,3 +230,103 @@ def test_provider_unavailable_uses_class_default(db_session):
     )
     assert decision.tool == AgentTool.SEND_WHATSAPP
     assert decision.route_decision.task == "DECIDE"
+
+
+# ---------------------------------------------------------------- Jev DECIDE
+
+from application.operations.reply_understanding import read_reply  # noqa: E402
+from test_suite.jev_fake import fake_decide  # noqa: E402
+
+_NOON = datetime(2026, 9, 5, 11, 0, tzinfo=IST)
+
+
+def _must_not_route():
+    return FakeRouter({"tool": "STOP", "reason": "the LLM must not be asked"})
+
+
+def test_jev_picks_the_tool_and_the_llm_is_not_called(db_session):
+    _seed(db_session)
+    router = _must_not_route()
+    decision = decide_tool(
+        db_session, "agent_1", model_router=router, now_ist=_NOON,
+        jev=fake_decide({"tool": ("GENERATE_QR_CODE", 0.9)}),
+    )
+    assert decision.tool == AgentTool.GENERATE_QR_CODE
+    assert decision.allowed is True
+    assert router.calls == []
+    assert decision.route_decision.provider == "openrouter"
+    assert decision.route_decision.task == "DECIDE"
+    assert "Jev chose GENERATE_QR_CODE" in decision.model_reason
+
+
+def test_jev_low_confidence_uses_the_class_default(db_session):
+    _seed(db_session, failure_class=FailureClass.SUBSCRIPTION_MANDATE)
+    decision = decide_tool(
+        db_session, "agent_1", model_router=_must_not_route(), now_ist=_NOON,
+        jev=fake_decide({"tool": ("VOICE_CALL", 0.3)}),
+    )
+    assert decision.tool == AgentTool.SCHEDULE_RETRY
+    assert "class default" in decision.model_reason
+
+
+def test_jev_outage_falls_back_to_the_llm(db_session):
+    _seed(db_session)
+    router = FakeRouter({"tool": "SEND_WHATSAPP", "reason": "LLM fallback"})
+    decision = decide_tool(
+        db_session, "agent_1", model_router=router, now_ist=_NOON, jev=fake_decide(fail=True),
+    )
+    assert [c[0] for c in router.calls] == ["DECIDE"]
+    assert decision.tool == AgentTool.SEND_WHATSAPP
+
+
+def test_use_jev_false_never_asks_jev(db_session):
+    _seed(db_session)
+    calls = []
+    decide_tool(
+        db_session, "agent_1", model_router=FakeRouter(), now_ist=_NOON,
+        jev=fake_decide(calls=calls), use_jev=False,
+    )
+    assert calls == []
+
+
+def _partial_turn(db_session, rupees):
+    text = f"abhi {rupees} de sakta hoon, 15 tarikh ko baaki"
+    label = f"₹{rupees:,}"
+    reading = read_reply(
+        text, today=_NOON.date(),
+        decide=fake_decide({"commits_to_pay": 0.95, "p2p_when": "day_of_month", "p2p_number": "15", "offer_amount": label}),
+    )
+    return decide_tool(
+        db_session, "agent_1", model_router=_must_not_route(), now_ist=_NOON,
+        customer_text=text, reading=reading, jev=fake_decide({"tool": ("OFFER_PARTIAL_PLAN", 0.9)}),
+    )
+
+
+def test_offer_amount_and_p2p_become_partial_amount_and_deadline(db_session):
+    _seed(db_session)  # ₹5,000
+    decision = _partial_turn(db_session, 3000)
+    assert decision.tool == AgentTool.OFFER_PARTIAL_PLAN
+    assert decision.allowed is True
+    assert decision.request_amount_minor == 300000
+    assert decision.deadline_days == 10
+
+
+def test_offer_below_policy_minimum_is_refused_by_the_sandbox(db_session):
+    _seed(db_session)  # ₹5,000; 50% minimum
+    decision = _partial_turn(db_session, 2000)
+    assert decision.allowed is False
+    assert decision.tool == AgentTool.HANDOFF_TO_HUMAN
+    assert "below the 50% policy minimum" in decision.reason
+
+
+def test_policy_forbidden_tools_are_not_offered(db_session):
+    _seed(db_session)
+    update_policy(db_session, {"allowed_actions": ["SEND_WHATSAPP", "GENERATE_PAYMENT_LINK"]})
+    calls = []
+    decide_tool(
+        db_session, "agent_1", model_router=_must_not_route(), now_ist=_NOON,
+        jev=fake_decide({"tool": ("SEND_WHATSAPP", 0.9)}, calls=calls),
+    )
+    offered = set(calls[0]["questions"]["tool"]["criteria"])
+    assert "VOICE_CALL" not in offered and "OFFER_FEE_WAIVER" not in offered
+    assert {"SEND_WHATSAPP", "GENERATE_PAYMENT_LINK", "HANDOFF_TO_HUMAN", "STOP"} <= offered

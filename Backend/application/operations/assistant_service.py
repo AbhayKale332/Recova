@@ -12,6 +12,8 @@ from sqlalchemy .orm import Session
 from application .constants import TransactionLifecycleState
 from application .entities import TransactionState
 from application .operations .reconciliation_service import compute_metrics
+from application .operations import jev_client
+from application .operations .jev_client import DecisionUnavailable
 
 logger =logging .getLogger (__name__ )
 
@@ -352,6 +354,133 @@ generate :GenerateFn )->dict |None :
 
 
 
+# ------------------------------------------------------------ Jev intent
+# Jev reads the operator's message into the same parsed dict the LLM used to
+# return. Code finds the candidate cases (never the whole catalog); the LLM is
+# asked only when the operator wants an answer written.
+
+# Below this the intent is too spread to act on; the assistant asks instead.
+# Probe (2026-09-28): clear commands scored 0.97-1.00; "hmm do the thing"
+# split answer 0.52 / run_recovery 0.38 at confidence 0.40.
+ASSISTANT_MIN_CONFIDENCE =0.5
+_MAX_TARGETS =12
+
+_INTENT_CRITERIA ={
+"answer":"The operator asks a question (a rate, a total, a status, which class is worst, what a term means) or chats; nothing should be changed.",
+"run_recovery":"The operator wants the recovery agent to work on, recover, chase, or pursue one case or a group of cases.",
+"set_status":"The operator wants a case's outcome changed: mark it recovered, escalate it, cancel it, or fail it.",
+"add_note":"The operator wants to attach a note to a case.",
+"navigate":"The operator wants to open, show, or go to a page or a filtered list.",
+}
+_STATUS_CRITERIA ={
+"PENDING":"Pending, not yet worked, recoverable cases.",
+"DIAGNOSING":"Being diagnosed.",
+"INTERVENING":"Being worked on right now.",
+"WAITING":"Waiting (deferred, promise to pay, retry scheduled).",
+"RECOVERED":"Recovered, resolved, paid.",
+"ESCALATED":"Escalated to a human.",
+"CANCELLED":"Cancelled or stopped.",
+"FAILED":"Failed or lost.",
+"none":"No outcome or status is named.",
+}
+_ROUTE_CRITERIA ={
+"overview":"The overview dashboard.",
+"transactions":"The full, unfiltered transactions list.",
+"escalations":"The escalations queue.",
+"audit":"The audit log.",
+"compliance":"The stopping rules / compliance page.",
+"policy":"The policy inspector.",
+"class:1":"Failed payments (bank or network failures).",
+"class:2":"Abandoned checkouts.",
+"class:3":"Failed subscriptions or mandates (auto-debit).",
+"class:4":"Overdue invoices (B2B receivables).",
+"none":"No page is named.",
+}
+_SERIAL =re .compile (r"#?\b(\d{1,6})\b")
+
+
+def _targets (db :Session ,message :str ,context :dict )->dict [str ,str ]:
+    """Cases the message could mean, keyed by the reference ``_build`` resolves."""
+    text =message .lower ()
+    out :dict [str ,str ]={}
+    if context .get ("focused_transaction_id"):
+        out ["this"]="The case the operator has open right now ('this', 'it', 'current')."
+    for m in _SERIAL .finditer (message ):
+        n =int (m .group (1 ))
+        if db .get (TransactionState ,n )is not None :
+            out [f"#{n }"]=f"Transaction number {n }."
+    names =[]
+    for t in db .query (TransactionState ).all ():
+        name =str ((t .metadata_json or {}).get ("customer_name")or "")
+        if name and name not in names and any (
+        len (tok )>=3 and re .search (rf"\b{re .escape (tok )}\b",text )for tok in name .lower ().split ()
+        ):
+            names .append (name )
+    for name in names [:_MAX_TARGETS ]:
+        out [name ]=f"The customer {name }."
+    return out
+
+
+def _parse_with_jev (message :str ,db :Session ,context :dict ,locale :str ,
+generate :GenerateFn |None ,jev =None )->dict |None :
+    targets =_targets (db ,message ,context )
+    questions ={
+    "intent":jev_client .choice ("What does the operator want from `operator_message`?",_INTENT_CRITERIA ),
+    "scope":jev_client .choice (
+    "If the operator wants cases recovered, do they mean one case or a group of cases (all, these, this list)?",
+    {"one":"One specific case.","batch":"A group: all, these, the pending ones, this whole list.",
+    "not_applicable":"They do not ask for recovery."},
+    ),
+    "status":jev_client .choice ("Which case status or outcome does `operator_message` name, if any?",_STATUS_CRITERIA ),
+    "route":jev_client .choice ("Which page of the dashboard does `operator_message` refer to, if any?",_ROUTE_CRITERIA ),
+    }
+    if targets :
+        questions ["target"]=jev_client .choice (
+        "Which case does `operator_message` refer to?",
+        {**targets ,"none":"No specific case, or a case not listed here."},
+        )
+    state ={
+    "operator_message":message ,
+    "current_view":_describe_screen (context ),
+    "case_open":bool (context .get ("focused_transaction_id")),
+    }
+    try :
+        j =(jev or jev_client .decide )(state ,questions )
+        intent =j .choice ("intent")
+        scope =j .choice ("scope").choice
+        status =j .choice ("status").choice
+        route =j .choice ("route").choice
+        target =j .choice ("target").choice if targets else "none"
+    except DecisionUnavailable as exc :
+        logger .info ("Jev unavailable for the assistant (%s); using the LLM parse.",exc )
+        return None
+
+    confidence =intent .confidence if intent .confidence is not None else 1.0
+    if confidence <ASSISTANT_MIN_CONFIDENCE :
+        ask =("क्या आप किसी केस पर काम करवाना चाहते हैं, कोई पेज खोलना, या कुछ पूछना? थोड़ा और बताइए।"
+        if locale =="hi"
+        else "Do you want me to work a case, open a page, or answer something? Say a bit more.")
+        return {"intent":"answer","reply":ask }
+
+    parsed :dict ={
+    "intent":intent .choice ,
+    "transaction_ref":None if target =="none"else target ,
+    "status":None if status =="none"else status ,
+    "route":None if route =="none"else route ,
+    "scope":scope if scope !="not_applicable"else None ,
+    }
+    if intent .choice =="run_recovery"and parsed ["scope"]=="batch":
+        parsed ["transaction_ref"]=None
+    if intent .choice =="add_note":
+        parsed ["note"]=message .split (":",1 )[1 ].strip ()if ":"in message else message
+    if intent .choice =="answer":
+        # Only the answer is text; the strong-tier LLM writes it, grounded.
+        drafted =_parse_with_model (message ,db ,context ,locale ,generate )if generate else None
+        reply =drafted .get ("reply")if drafted and drafted .get ("intent")=="answer"else None
+        parsed ["reply"]=reply or _answer_from_metrics (message .lower (),db ,locale )
+    return parsed
+
+
 _QUESTION_STARTS ={"how","what","which","why","where","when","who","is","are","do","does","can"}
 
 
@@ -537,7 +666,7 @@ _UNSET =object ()
 
 
 def interpret (db :Session ,message :str ,*,locale :str ="en",
-context :dict |None =None ,generate =_UNSET )->dict :
+context :dict |None =None ,generate =_UNSET ,jev =None )->dict :
     """Interpret a chat message → {"reply": str, "action": dict|None}.
 
     ``generate`` unset builds the live model; pass ``None`` to force the offline
@@ -547,7 +676,9 @@ context :dict |None =None ,generate =_UNSET )->dict :
     loc ="hi"if locale =="hi"else "en"
     gen =_default_generate ()if generate is _UNSET else generate
 
-    parsed =_parse_with_model (message ,db ,ctx ,loc ,gen )if gen is not None else None
+    parsed =_parse_with_jev (message ,db ,ctx ,loc ,gen ,jev )
+    if parsed is None and gen is not None :
+        parsed =_parse_with_model (message ,db ,ctx ,loc ,gen )
     if parsed is None :
         parsed =_fallback_parse (message ,db ,ctx ,loc )
     return _build (db ,parsed ,ctx ,loc )

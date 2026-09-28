@@ -9,7 +9,9 @@ from pydantic import BaseModel ,ValidationError
 
 from application .constants import FailureClass ,Playbook
 from application .operations .model_router import ModelRouter
-from application .operations .playbook_map import DEFAULT_PLAYBOOK
+from application .operations .playbook_map import DEFAULT_PLAYBOOK ,PLAYBOOK_CRITERIA ,ROOT_CAUSES
+from application .operations import jev_client
+from application .operations .jev_client import DecisionUnavailable ,route_decision_for
 
 logger =logging .getLogger (__name__ )
 
@@ -45,11 +47,83 @@ class _DiagnosisPayload (BaseModel ):
     proposed_discount_pct :float |None =None
 
 
+# Jev's playbook choice below this confidence is treated as no diagnosis: the
+# class default playbook is the safer route. Probe (2026-09-28): the nine
+# clear cases scored 0.94-1.00; "we never received half of these goods" on an
+# overdue invoice (no playbook fits a dispute) scored 0.43.
+DIAGNOSE_MIN_CONFIDENCE =0.5
+
+_CLASS_SITUATION ={
+FailureClass .REALTIME_DEGRADATION :"A payment failed at checkout with a gateway or bank error.",
+FailureClass .CHECKOUT_ABANDONMENT :"A checkout was not completed.",
+FailureClass .SUBSCRIPTION_MANDATE :"A recurring auto-debit (subscription mandate) failed.",
+FailureClass .B2B_RECEIVABLES :"A business invoice is overdue; there is no gateway error code.",
+}
+
+
+def _jev_state (failure_class :FailureClass ,telemetry :dict [str ,Any ],user_message :str |None )->dict :
+    # Only the fields the questions read. Amounts are a code-side concern.
+    signals ={k :v for k ,v in telemetry .items ()if k not in ("amount_minor",)and v is not None }
+    state :dict [str ,Any ]={"situation":_CLASS_SITUATION [failure_class ],"gateway_signals":signals }
+    if user_message :
+        state ["customer_message"]=user_message
+    return state
+
+
 class DiagnosisEngine :
-    def __init__ (self ,generate :GenerateFn |None =None ,router :ModelRouter |None =None ):
+    def __init__ (
+    self ,
+    generate :GenerateFn |None =None ,
+    router :ModelRouter |None =None ,
+    *,
+    use_jev :bool =True ,
+    jev :Callable [...,jev_client .Judgments ]|None =None ,
+    ):
         self ._generate =generate
         self ._router =router
+        self ._use_jev =use_jev
+        self ._jev =jev
         self .last_route_decision =None
+        self .last_judgment :dict |None =None
+
+    def _diagnose_with_jev (
+    self ,
+    failure_class :FailureClass ,
+    telemetry :dict [str ,Any ],
+    user_message :str |None ,
+    )->Diagnosis :
+        """Jev picks the playbook and the root cause from closed sets."""
+        causes =ROOT_CAUSES [failure_class ]
+        questions ={
+        "playbook":jev_client .choice (
+        "Which recovery playbook fits this failed payment, given `gateway_signals` and any "
+        "`customer_message`? The customer's own words outweigh the gateway code.",
+        {p .value :PLAYBOOK_CRITERIA [p ]for p in Playbook },
+        ),
+        "root_cause":jev_client .choice (
+        "What most likely caused this payment to fail, given `gateway_signals` and any `customer_message`?",
+        causes ,
+        ),
+        }
+        judgments =(self ._jev or jev_client .decide )(
+        _jev_state (failure_class ,telemetry ,user_message ),questions
+        )
+        playbook =judgments .choice ("playbook")
+        cause =judgments .choice ("root_cause")
+        confidence =playbook .confidence if playbook .confidence is not None else 1.0
+        if confidence <DIAGNOSE_MIN_CONFIDENCE :
+            chosen =DEFAULT_PLAYBOOK [failure_class ]
+            reason =f"Jev unsure on playbook (confidence {confidence :.2f}) → class default {chosen .value }"
+        else :
+            chosen =Playbook (playbook .choice )
+            reason =f"Jev diagnosed {cause .choice } → {chosen .value } (confidence {confidence :.2f})"
+        self .last_route_decision =route_decision_for ("DIAGNOSE",judgments ,reason )
+        self .last_judgment =jev_client .summarise (judgments )
+        return Diagnosis (
+        root_cause =cause .choice if cause .choice !="UNKNOWN"else "UNDIAGNOSED",
+        recommended_playbook =chosen ,
+        confidence =round (confidence ,4 ),
+        )
 
     def diagnose (
     self ,
@@ -59,6 +133,12 @@ class DiagnosisEngine :
     user_message :str |None =None ,
     )->Diagnosis :
         self .last_route_decision =None
+        self .last_judgment =None
+        if self ._use_jev :
+            try :
+                return self ._diagnose_with_jev (failure_class ,telemetry ,user_message )
+            except DecisionUnavailable as exc :
+                logger .info ("Jev diagnosis unavailable (%s); using the LLM diagnosis.",exc )
         prompt =self ._build_prompt (failure_class ,telemetry ,user_message )
         # LLM output is advisory; invalid responses always fall back to the class-specific default.
         try :
